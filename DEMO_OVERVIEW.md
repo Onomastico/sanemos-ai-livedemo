@@ -216,14 +216,22 @@ Deploy usando Cloud Build con `cloudbuild.yaml` (pasa las variables de entorno c
 ```bash
 # Setup inicial (una vez)
 gcloud config set project sanemos-ai-live-demo
-gcloud services enable run.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com
+gcloud services enable run.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com generativelanguage.googleapis.com
 
-# Deploy
+# Deploy (en PowerShell usar comillas alrededor de --substitutions)
 gcloud builds submit --config cloudbuild.yaml \
-  --substitutions=_NEXT_PUBLIC_GEMINI_API_KEY=tu-key,_NEXT_PUBLIC_ACCESS_CODE=tu-codigo
+  --substitutions="_NEXT_PUBLIC_GEMINI_API_KEY=tu-key,_NEXT_PUBLIC_ACCESS_CODE=tu-codigo"
 ```
 
 > **Nota:** Las variables `NEXT_PUBLIC_*` de Next.js deben estar disponibles en **build time** (se incrustan en el bundle del cliente). El `cloudbuild.yaml` las pasa como `--build-arg` al `docker build`, garantizando que lleguen al `npm run build`.
+
+### Configuración de API Key
+
+La API key de Google Cloud **no debe tener restricción por HTTP Referrer**, ya que las conexiones WebSocket no envían header `Referer` y serían bloqueadas. Para proteger la key:
+
+1. En Google Cloud Console → APIs & Services → Credentials → tu API key
+2. Application restrictions: **None** (o restricción por IP)
+3. API restrictions: Restringir solo a **Generative Language API**
 
 ---
 
