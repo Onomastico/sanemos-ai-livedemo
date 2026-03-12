@@ -6,6 +6,7 @@ import { getAgent } from '@/lib/agents';
 import { maskPII } from '@/lib/piiScrubber';
 import BreathingVisualizer from './BreathingVisualizer';
 import SessionSummary from './SessionSummary';
+import SocialPostModal from './SocialPostModal';
 
 const EMOTION_COLORS = {
     sadness: '#4A90D9', anger: '#D94A4A', fear: '#9B59B6',
@@ -23,8 +24,10 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
     const [isFaroMode, setIsFaroMode] = useState(false);
     const [showSidePanel, setShowSidePanel] = useState(false);
     const [showSummary, setShowSummary] = useState(false);
+    const [activeTooltip, setActiveTooltip] = useState(null);
     const sidePanelRef = useRef(null);
     const videoPipRef = useRef(null);
+    const handleExitRef = useRef(null);
 
     const handleEscalateToFaro = () => {
         setIsFaroMode(true);
@@ -32,12 +35,21 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
         if (faroAgent) switchAgent(faroAgent, "El usuario acaba de ser transferido porque expresó pensamientos de hacerse daño. Preséntate como Faro, el agente de crisis, y responde con empatía inmediata en español. Hazle saber que estás aquí para ayudarle.");
     };
 
+    const handleSwitchAgent = (agentId) => {
+        const newAgent = getAgent(agentId);
+        if (!newAgent) return;
+        if (agentId === 'faro') return; // Faro only via crisis escalation
+        setIsFaroMode(false);
+        switchAgent(newAgent, `El usuario pidió cambiar a hablar contigo. Preséntate brevemente como ${newAgent.name} y continúa la conversación con naturalidad en español.`);
+    };
+
     const {
         status, agent, messages, currentMessage, error,
         isSpeaking, isAiSpeaking, emotion, breathingExercise, setBreathingExercise,
         cameraEnabled, toggleCamera, videoStreamRef,
+        socialPost, setSocialPost, uiToast,
         switchAgent, connect, disconnect
-    } = useGeminiLive(apiKey, initialAgent, handleEscalateToFaro, userContext, userCountry);
+    } = useGeminiLive(apiKey, initialAgent, handleEscalateToFaro, () => handleExitRef.current?.(), handleSwitchAgent, userContext, userCountry);
 
     useEffect(() => {
         connect();
@@ -84,6 +96,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
             onClose();
         }
     };
+    handleExitRef.current = handleExit;
 
     // Show summary screen
     if (showSummary) {
@@ -176,12 +189,22 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                 {/* Header */}
                 <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-20">
                     <div className="flex items-center gap-2">
-                        <button
-                            onClick={handleExit}
-                            className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-full text-white backdrop-blur-md transition-colors text-sm font-medium mt-8 sm:mt-0"
-                        >
-                            Salir de la sala
-                        </button>
+                        <div className="relative">
+                            <button
+                                onClick={handleExit}
+                                onMouseEnter={() => setActiveTooltip('exit')}
+                                onMouseLeave={() => setActiveTooltip(null)}
+                                className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-full text-white backdrop-blur-md transition-colors text-sm font-medium mt-8 sm:mt-0"
+                            >
+                                Salir de la sala
+                            </button>
+                            {activeTooltip === 'exit' && status === 'connected' && (
+                                <div className="absolute top-full mt-2 left-0 w-60 bg-gray-900/95 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2.5 text-[11px] text-gray-300 leading-relaxed shadow-xl z-50">
+                                    <span className="font-medium text-white block mb-0.5">Finalizar sesión</span>
+                                    También puedes decir: <span className="italic" style={{ color: activeColor }}>&quot;Terminemos la sesión&quot;</span> o <span className="italic" style={{ color: activeColor }}>&quot;Quiero volver a la sala&quot;</span>
+                                </div>
+                            )}
+                        </div>
                         {/* Mobile: toggle side panel */}
                         <button
                             onClick={() => setShowSidePanel(!showSidePanel)}
@@ -190,7 +213,48 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                             Historial
                         </button>
                     </div>
-                    <div className="flex items-center gap-2 mt-8 sm:mt-0">
+                    <div className="flex items-center gap-2 mt-8 sm:mt-0 flex-wrap justify-end">
+                        {/* Feature hints */}
+                        {!isFaroMode && status === 'connected' && (
+                            <>
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setActiveTooltip(activeTooltip === 'post' ? null : 'post')}
+                                        onMouseEnter={() => setActiveTooltip('post')}
+                                        onMouseLeave={() => setActiveTooltip(null)}
+                                        className="flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-md transition-colors text-xs font-medium border bg-white/5 border-white/10 text-gray-400 hover:bg-white/10"
+                                    >
+                                        <span className="text-sm">📝</span>
+                                        Post
+                                    </button>
+                                    {activeTooltip === 'post' && (
+                                        <div className="absolute top-full mt-2 right-0 w-56 bg-gray-900/95 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2.5 text-[11px] text-gray-300 leading-relaxed shadow-xl z-50">
+                                            <span className="font-medium text-white block mb-0.5">Genera un post</span>
+                                            Intenta decir: <span className="italic" style={{ color: activeColor }}>&quot;Genérame un post para Facebook&quot;</span> o <span className="italic" style={{ color: activeColor }}>&quot;Ayúdame a escribir algo para Instagram&quot;</span>
+                                        </div>
+                                    )}
+                                </div>
+                                {agent.id === 'serena' && (
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => setActiveTooltip(activeTooltip === 'breathing' ? null : 'breathing')}
+                                            onMouseEnter={() => setActiveTooltip('breathing')}
+                                            onMouseLeave={() => setActiveTooltip(null)}
+                                            className="flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-md transition-colors text-xs font-medium border bg-white/5 border-white/10 text-gray-400 hover:bg-white/10"
+                                        >
+                                            <span className="text-sm">🌬️</span>
+                                            Respirar
+                                        </button>
+                                        {activeTooltip === 'breathing' && (
+                                            <div className="absolute top-full mt-2 right-0 w-56 bg-gray-900/95 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2.5 text-[11px] text-gray-300 leading-relaxed shadow-xl z-50">
+                                                <span className="font-medium text-white block mb-0.5">Ejercicio de respiración</span>
+                                                Intenta decir: <span className="italic" style={{ color: activeColor }}>&quot;Hagamos un ejercicio de respiración&quot;</span> o <span className="italic" style={{ color: activeColor }}>&quot;Necesito relajarme&quot;</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </>
+                        )}
                         {/* Camera toggle */}
                         <button
                             onClick={toggleCamera}
@@ -389,6 +453,24 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                     )}
                 </div>
             </div>
+
+            {/* Social Post Modal */}
+            {socialPost && (
+                <SocialPostModal
+                    post={socialPost}
+                    agentColor={activeColor}
+                    onClose={() => setSocialPost(null)}
+                />
+            )}
+
+            {/* UI Toast */}
+            {uiToast && (
+                <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[70] animate-fade-in">
+                    <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-full px-5 py-2 text-white text-sm font-medium shadow-lg">
+                        {uiToast}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -16,6 +16,25 @@ function buildFunctionDeclarations(agentId) {
             description: "Call this tool IMMEDIATELY if the user expresses suicidal thoughts, self-harm, or severe distress. Do not hesitate."
         },
         {
+            name: "end_session",
+            description: "Call this tool when the user wants to end the conversation, leave the session, or says goodbye. Say a warm farewell message BEFORE calling this tool."
+        },
+        {
+            name: "switch_agent",
+            description: "Switch to another companion when the user requests it. Acknowledge briefly before calling.",
+            parameters: {
+                type: "OBJECT",
+                properties: {
+                    agent_id: {
+                        type: "STRING",
+                        enum: ["luna", "marco", "serena", "alma", "nora", "iris"],
+                        description: "Agent ID: luna, marco, serena, alma, nora, or iris"
+                    }
+                },
+                required: ["agent_id"]
+            }
+        },
+        {
             name: "report_text_emotion",
             description: "Report the primary emotion detected from the CONTENT/MEANING of the user's words. Call silently after each user turn. Never mention this tool to the user.",
             parameters: {
@@ -71,6 +90,51 @@ function buildFunctionDeclarations(agentId) {
         }
     ];
 
+    // UI tools — available to all agents except Faro
+    if (agentId !== 'faro') {
+        declarations.push(
+            {
+                name: "generate_social_post",
+                description: "Show a popup with a social media post you wrote for the user. Use for commemorative dates, memorials, birthdays, etc.",
+                parameters: {
+                    type: "OBJECT",
+                    properties: {
+                        platform: { type: "STRING", enum: ["facebook", "instagram", "twitter", "general"], description: "Target social network" },
+                        post_text: { type: "STRING", description: "The full post text ready to copy, with emojis if appropriate" },
+                        occasion: { type: "STRING", description: "Brief label: birthday, anniversary, memorial, etc." }
+                    },
+                    required: ["platform", "post_text"]
+                }
+            },
+            {
+                name: "copy_to_clipboard",
+                description: "Copy text to the user's clipboard. Use when they ask to copy something.",
+                parameters: {
+                    type: "OBJECT",
+                    properties: {
+                        text: { type: "STRING", description: "Text to copy" }
+                    },
+                    required: ["text"]
+                }
+            },
+            {
+                name: "open_url",
+                description: "Open a URL in a new browser tab. Use when the user asks to open a website.",
+                parameters: {
+                    type: "OBJECT",
+                    properties: {
+                        url: { type: "STRING", description: "Full URL starting with https://" }
+                    },
+                    required: ["url"]
+                }
+            },
+            {
+                name: "dismiss_modal",
+                description: "Close any open popup/modal on screen. Use when the user says to close it or continue."
+            }
+        );
+    }
+
     if (agentId === 'serena') {
         declarations.push(
             {
@@ -98,7 +162,7 @@ function buildFunctionDeclarations(agentId) {
     return declarations;
 }
 
-export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, userContext, userCountry) {
+export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSession, onSwitchAgent, userContext, userCountry) {
     const [status, setStatus] = useState('disconnected'); // disconnected, connecting, connected
     const [agent, setAgent] = useState(initialAgent);
     const [messages, setMessages] = useState([]);         // completed full messages
@@ -110,6 +174,8 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, userContex
     const [emotion, setEmotion] = useState(null);               // { text, voice, facial } multi-source emotion
     const [breathingExercise, setBreathingExercise] = useState(null); // breathing params from Serena
     const [cameraEnabled, setCameraEnabled] = useState(false);
+    const [socialPost, setSocialPost] = useState(null);         // { platform, post_text, occasion }
+    const [uiToast, setUiToast] = useState(null);               // toast message string
 
     const wsRef = useRef(null);
     const audioContextRef = useRef(null);
@@ -122,11 +188,16 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, userContex
     const speakingTimeoutRef = useRef(null);
     const pendingSwitchRef = useRef(false);
     const pendingSwitchContextRef = useRef(null);
+    const closingIntentionallyRef = useRef(false);
     const videoStreamRef = useRef(null);
     const canvasRef = useRef(null);
     const frameIntervalRef = useRef(null);
     const onEscalateToFaroRef = useRef(onEscalateToFaro);
     onEscalateToFaroRef.current = onEscalateToFaro;
+    const onEndSessionRef = useRef(onEndSession);
+    onEndSessionRef.current = onEndSession;
+    const onSwitchAgentRef = useRef(onSwitchAgent);
+    onSwitchAgentRef.current = onSwitchAgent;
     const userContextRef = useRef(userContext);
     userContextRef.current = userContext;
     const userCountryRef = useRef(userCountry);
@@ -189,6 +260,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, userContex
         setMessages([]);
         setCurrentMessage(null);
         currentMsgRef.current = null;
+        closingIntentionallyRef.current = false;
 
         try {
             const safeApiKey = typeof apiKey === 'string' ? apiKey.trim() : "";
@@ -285,6 +357,34 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, userContex
                                 if (onEscalateToFaroRef.current) onEscalateToFaroRef.current();
                                 return; // WS will be torn down, no response needed
                             }
+                            if (call.name === 'end_session') {
+                                console.log("🚪 END SESSION requested by agent.");
+                                closingIntentionallyRef.current = true;
+                                // Wait for farewell audio to finish playing, then exit
+                                let checks = 0;
+                                const waitForAudio = () => {
+                                    checks++;
+                                    if (activeSourcesRef.current <= 0 || checks > 16) {
+                                        // Audio done or 8s max — exit
+                                        if (onEndSessionRef.current) onEndSessionRef.current();
+                                    } else {
+                                        setTimeout(waitForAudio, 500);
+                                    }
+                                };
+                                // Initial delay to let audio chunks start arriving
+                                setTimeout(waitForAudio, 1500);
+                                return; // Don't send toolResponse — session is ending
+                            }
+                            if (call.name === 'switch_agent') {
+                                const agentId = call.args?.agent_id;
+                                console.log(`🔄 SWITCH AGENT requested: ${agentId}`);
+                                closingIntentionallyRef.current = true;
+                                // Small delay to let the acknowledgement audio play
+                                setTimeout(() => {
+                                    if (onSwitchAgentRef.current) onSwitchAgentRef.current(agentId);
+                                }, 1500);
+                                return; // Don't send toolResponse — WS will be torn down for switch
+                            }
                             if (call.name === 'report_text_emotion') {
                                 const args = call.args || {};
                                 setEmotion(prev => ({ ...prev, text: { emotion: args.emotion, intensity: args.intensity || 3 } }));
@@ -309,6 +409,27 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, userContex
                             }
                             if (call.name === 'stop_breathing_exercise') {
                                 setBreathingExercise(null);
+                            }
+                            if (call.name === 'generate_social_post') {
+                                const args = call.args || {};
+                                setSocialPost({ platform: args.platform || 'general', post_text: args.post_text || '', occasion: args.occasion || '' });
+                            }
+                            if (call.name === 'copy_to_clipboard') {
+                                const text = call.args?.text || '';
+                                navigator.clipboard.writeText(text).catch(e => console.warn('Clipboard failed:', e));
+                                setUiToast('Copiado al portapapeles');
+                                setTimeout(() => setUiToast(null), 3000);
+                            }
+                            if (call.name === 'open_url') {
+                                const url = call.args?.url || '';
+                                if (url.startsWith('http://') || url.startsWith('https://')) {
+                                    window.open(url, '_blank');
+                                    setUiToast('Abriendo enlace...');
+                                    setTimeout(() => setUiToast(null), 3000);
+                                }
+                            }
+                            if (call.name === 'dismiss_modal') {
+                                setSocialPost(null);
                             }
                             // Queue toolResponse for non-escalation calls
                             responses.push({
@@ -343,7 +464,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, userContex
                 // Ignore close from stale WebSocket (e.g. React strict mode double-mount)
                 if (wsRef.current !== ws) return;
                 console.log(`WebSocket closed. Code: ${event.code}, Reason: ${event.reason}`);
-                if (event.code !== 1000 && event.code !== 1005) {
+                if (event.code !== 1000 && event.code !== 1005 && !closingIntentionallyRef.current) {
                     setError(`WebSocket closed abnormally: ${event.code} ${event.reason}`);
                 }
                 setStatus('disconnected');
@@ -630,6 +751,9 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, userContex
         cameraEnabled,
         toggleCamera,
         videoStreamRef,
+        socialPost,
+        setSocialPost,
+        uiToast,
         connect,
         disconnect
     };

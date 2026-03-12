@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600">
+  <defs>
+    <pattern id="dots" x="0" y="0" width="30" height="30" patternUnits="userSpaceOnUse">
+      <circle cx="15" cy="15" r="0.8" fill="rgba(255,255,255,0.04)"/>
+    </pattern>
+    <pattern id="grid" x="0" y="0" width="60" height="60" patternUnits="userSpaceOnUse">
+      <line x1="60" y1="0" x2="60" y2="60" stroke="rgba(255,255,255,0.02)" stroke-width="0.5"/>
+      <line x1="0" y1="60" x2="60" y2="60" stroke="rgba(255,255,255,0.02)" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+  <rect width="600" height="600" fill="transparent"/>
+  <rect width="600" height="600" fill="url(#grid)"/>
+  <rect width="600" height="600" fill="url(#dots)"/>
+</svg>
