@@ -32,6 +32,22 @@ export const USER_CONTEXTS = [
         emoji: '👵'
     },
     {
+        id: 'lucia',
+        name: 'Lucía',
+        summary: 'Perdió a su perro hace 3 meses',
+        detail: 'Lucía, mujer de 38 años. Su perro Max, su compañero de 12 años, falleció hace 3 meses por cáncer. Se siente culpable por los momentos que no pasó con él y extraña terriblemente sus rutinas diarias juntos.',
+        country: 'España',
+        emoji: '🐾'
+    },
+    {
+        id: 'pablo',
+        name: 'Pablo',
+        summary: 'En proceso de separación',
+        detail: 'Pablo, hombre de 35 años. Está en medio de una separación después de 10 años de matrimonio. Está procesando la pérdida de identidad como persona casada, negocia la custodia compartida de sus dos hijos, y lucha por imaginar su futuro como persona sola.',
+        country: 'México',
+        emoji: '✨'
+    },
+    {
         id: 'custom',
         name: 'Sin contexto',
         summary: 'Comenzar sin perfil predefinido',

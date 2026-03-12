@@ -16,8 +16,44 @@ function buildFunctionDeclarations(agentId) {
             description: "Call this tool IMMEDIATELY if the user expresses suicidal thoughts, self-harm, or severe distress. Do not hesitate."
         },
         {
-            name: "report_emotion",
-            description: "Report the primary emotion detected in the user's last message. Call silently after each user turn. Never mention this tool to the user.",
+            name: "report_text_emotion",
+            description: "Report the primary emotion detected from the CONTENT/MEANING of the user's words. Call silently after each user turn. Never mention this tool to the user.",
+            parameters: {
+                type: "OBJECT",
+                properties: {
+                    emotion: {
+                        type: "STRING",
+                        enum: ["sadness", "anger", "fear", "guilt", "hope", "calm", "love", "numbness"]
+                    },
+                    intensity: {
+                        type: "INTEGER",
+                        description: "Intensity from 1 (mild) to 5 (overwhelming)"
+                    }
+                },
+                required: ["emotion", "intensity"]
+            }
+        },
+        {
+            name: "report_voice_emotion",
+            description: "Report the emotion detected from the user's TONE OF VOICE (not words). Analyze vocal qualities: trembling, flat, rushed, warm, tense, breaking. Call silently after each user turn. Never mention this tool.",
+            parameters: {
+                type: "OBJECT",
+                properties: {
+                    emotion: {
+                        type: "STRING",
+                        enum: ["sadness", "anger", "fear", "guilt", "hope", "calm", "love", "numbness"]
+                    },
+                    intensity: {
+                        type: "INTEGER",
+                        description: "Intensity from 1 (mild) to 5 (overwhelming)"
+                    }
+                },
+                required: ["emotion", "intensity"]
+            }
+        },
+        {
+            name: "report_facial_emotion",
+            description: "Report the emotion detected from the user's FACIAL EXPRESSION in the video feed. Analyze: eyes, mouth, brow tension, tears, smile. Only call when camera is active and face is visible. Call silently. Never mention this tool.",
             parameters: {
                 type: "OBJECT",
                 properties: {
@@ -71,7 +107,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, userContex
     const [error, setError] = useState(null);
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [isAiSpeaking, setIsAiSpeaking] = useState(false);
-    const [emotion, setEmotion] = useState(null);               // { emotion, intensity } from report_emotion
+    const [emotion, setEmotion] = useState(null);               // { text, voice, facial } multi-source emotion
     const [breathingExercise, setBreathingExercise] = useState(null); // breathing params from Serena
     const [cameraEnabled, setCameraEnabled] = useState(false);
 
@@ -249,9 +285,17 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, userContex
                                 if (onEscalateToFaroRef.current) onEscalateToFaroRef.current();
                                 return; // WS will be torn down, no response needed
                             }
-                            if (call.name === 'report_emotion') {
+                            if (call.name === 'report_text_emotion') {
                                 const args = call.args || {};
-                                setEmotion({ emotion: args.emotion, intensity: args.intensity || 3 });
+                                setEmotion(prev => ({ ...prev, text: { emotion: args.emotion, intensity: args.intensity || 3 } }));
+                            }
+                            if (call.name === 'report_voice_emotion') {
+                                const args = call.args || {};
+                                setEmotion(prev => ({ ...prev, voice: { emotion: args.emotion, intensity: args.intensity || 3 } }));
+                            }
+                            if (call.name === 'report_facial_emotion') {
+                                const args = call.args || {};
+                                setEmotion(prev => ({ ...prev, facial: { emotion: args.emotion, intensity: args.intensity || 3 } }));
                             }
                             if (call.name === 'start_breathing_exercise') {
                                 const args = call.args || {};

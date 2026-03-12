@@ -71,8 +71,9 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
 
     const activeColor = isFaroMode ? '#E85D75' : agent.color;
     const activeName = isFaroMode ? 'Faro (Crisis Agent)' : agent.name;
-    const emotionColor = emotion ? EMOTION_COLORS[emotion.emotion] : null;
-    const emotionOpacity = emotion ? Math.min(emotion.intensity / 5, 1) * 0.3 : 0;
+    const primaryEmotion = emotion?.text || emotion?.voice || emotion?.facial || null;
+    const emotionColor = primaryEmotion ? EMOTION_COLORS[primaryEmotion.emotion] : null;
+    const emotionOpacity = primaryEmotion ? Math.min(primaryEmotion.intensity / 5, 1) * 0.3 : 0;
 
     // Exit handler — show summary if meaningful conversation happened
     const handleExit = () => {
@@ -246,18 +247,51 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                                         : 'Esperando...'}
                     </p>
 
-                    {/* Emotion badge */}
+                    {/* Emotion badges — multi-source */}
                     {emotion && !isFaroMode && (
-                        <div
-                            className="mt-2 px-3 py-1 rounded-full text-[11px] font-medium transition-all duration-700 border"
-                            style={{
-                                color: EMOTION_COLORS[emotion.emotion],
-                                backgroundColor: EMOTION_COLORS[emotion.emotion] + '15',
-                                borderColor: EMOTION_COLORS[emotion.emotion] + '30'
-                            }}
-                        >
-                            {EMOTION_LABELS[emotion.emotion] || emotion.emotion}
-                            <span className="ml-1.5 opacity-60">{'●'.repeat(Math.min(emotion.intensity, 5))}</span>
+                        <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+                            {emotion.text && (
+                                <div
+                                    className="px-2.5 py-1 rounded-full text-[10px] font-medium transition-all duration-700 border flex items-center gap-1"
+                                    style={{
+                                        color: EMOTION_COLORS[emotion.text.emotion],
+                                        backgroundColor: EMOTION_COLORS[emotion.text.emotion] + '15',
+                                        borderColor: EMOTION_COLORS[emotion.text.emotion] + '30'
+                                    }}
+                                >
+                                    <span className="opacity-50">💬</span>
+                                    {EMOTION_LABELS[emotion.text.emotion] || emotion.text.emotion}
+                                    <span className="ml-0.5 opacity-50">{'●'.repeat(Math.min(emotion.text.intensity, 5))}</span>
+                                </div>
+                            )}
+                            {emotion.voice && (
+                                <div
+                                    className="px-2.5 py-1 rounded-full text-[10px] font-medium transition-all duration-700 border flex items-center gap-1"
+                                    style={{
+                                        color: EMOTION_COLORS[emotion.voice.emotion],
+                                        backgroundColor: EMOTION_COLORS[emotion.voice.emotion] + '15',
+                                        borderColor: EMOTION_COLORS[emotion.voice.emotion] + '30'
+                                    }}
+                                >
+                                    <span className="opacity-50">🎙️</span>
+                                    {EMOTION_LABELS[emotion.voice.emotion] || emotion.voice.emotion}
+                                    <span className="ml-0.5 opacity-50">{'●'.repeat(Math.min(emotion.voice.intensity, 5))}</span>
+                                </div>
+                            )}
+                            {emotion.facial && (
+                                <div
+                                    className="px-2.5 py-1 rounded-full text-[10px] font-medium transition-all duration-700 border flex items-center gap-1"
+                                    style={{
+                                        color: EMOTION_COLORS[emotion.facial.emotion],
+                                        backgroundColor: EMOTION_COLORS[emotion.facial.emotion] + '15',
+                                        borderColor: EMOTION_COLORS[emotion.facial.emotion] + '30'
+                                    }}
+                                >
+                                    <span className="opacity-50">👁️</span>
+                                    {EMOTION_LABELS[emotion.facial.emotion] || emotion.facial.emotion}
+                                    <span className="ml-0.5 opacity-50">{'●'.repeat(Math.min(emotion.facial.intensity, 5))}</span>
+                                </div>
+                            )}
                         </div>
                     )}
 
