@@ -12,10 +12,30 @@ export default function Home() {
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [selectedContext, setSelectedContext] = useState(USER_CONTEXTS[0]);
   const [detectedCountry, setDetectedCountry] = useState(null);
+  const [accessCode, setAccessCode] = useState('');
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [accessError, setAccessError] = useState(false);
+
+  const requiredCode = process.env.NEXT_PUBLIC_ACCESS_CODE;
 
   useEffect(() => {
     detectCountry().then(setDetectedCountry);
+    // Check if already authorized this session
+    if (!requiredCode || sessionStorage.getItem('sanemos_authorized') === 'true') {
+      setIsAuthorized(true);
+    }
   }, []);
+
+  const handleAccessSubmit = (e) => {
+    e.preventDefault();
+    if (accessCode.trim() === requiredCode) {
+      setIsAuthorized(true);
+      setAccessError(false);
+      sessionStorage.setItem('sanemos_authorized', 'true');
+    } else {
+      setAccessError(true);
+    }
+  };
 
   if (selectedAgent) {
     return (
@@ -26,6 +46,48 @@ export default function Home() {
         userCountry={detectedCountry}
         onClose={() => setSelectedAgent(null)}
       />
+    );
+  }
+
+  // Access code gate
+  if (!isAuthorized) {
+    return (
+      <main className="min-h-screen bg-black flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-900/10 blur-[120px] rounded-full pointer-events-none" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-[#7B8FD4]/10 blur-[150px] rounded-full pointer-events-none" />
+        <div className="z-10 text-center max-w-md">
+          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4 bg-gradient-to-r from-[#9CCF6A] to-[#5FB7A6] text-transparent bg-clip-text">
+            Sanemos AI <span className="text-white">Live</span>
+          </h1>
+          <p className="text-gray-400 mb-8 text-sm">
+            Esta demo requiere un código de acceso.
+          </p>
+          <form onSubmit={handleAccessSubmit} className="flex flex-col items-center gap-4">
+            <input
+              type="password"
+              placeholder="Código de acceso..."
+              className={`w-full bg-black/40 border rounded-full px-6 py-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#9CCF6A] transition-all ${
+                accessError ? 'border-red-500/60' : 'border-white/10'
+              }`}
+              value={accessCode}
+              onChange={(e) => { setAccessCode(e.target.value); setAccessError(false); }}
+              autoFocus
+            />
+            {accessError && (
+              <p className="text-red-400 text-xs">Código incorrecto. Intenta de nuevo.</p>
+            )}
+            <button
+              type="submit"
+              className="px-8 py-3 rounded-full bg-gradient-to-r from-[#9CCF6A] to-[#5FB7A6] text-black font-semibold text-sm hover:opacity-90 transition-opacity"
+            >
+              Entrar
+            </button>
+          </form>
+          <p className="text-gray-600 text-xs mt-6">
+            Demo for Google Gemini Live Agent Challenge
+          </p>
+        </div>
+      </main>
     );
   }
 

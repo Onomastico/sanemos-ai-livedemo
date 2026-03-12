@@ -132,7 +132,14 @@ Cada agente tiene un `systemPrompt` especializado, avatar PNG, color temático, 
 - Botones: "Copiar resumen" (clipboard) y "Volver al inicio"
 - States: loading spinner, error con retry, contenido renderizado
 
-### 10. Protección de Información Personal (PII Scrubber)
+### 10. Código de Acceso (Access Gate)
+- Si `NEXT_PUBLIC_ACCESS_CODE` está definida, la landing muestra un gate pidiendo código antes de mostrar los agentes
+- Comparación client-side contra la env var
+- Se persiste en `sessionStorage` para no pedir el código cada vez que se recarga
+- Si la env var no está definida, el gate se omite y la demo es pública
+- Ideal para proteger créditos de API durante demos/evaluaciones
+
+### 11. Protección de Información Personal (PII Scrubber)
 - Scrubbing client-side de números de teléfono, emails, y RUT/DNI chileno
 - Se aplica a toda transcripción mostrada en UI (historial, burbuja live, resumen)
 - Reemplazos: `[TELÉFONO OCULTO]`, `[EMAIL OCULTO]`, `[RUT/ID OCULTO]`
@@ -163,7 +170,7 @@ Las `functionDeclarations` se construyen dinámicamente por agente: todos recibe
 ```
 src/
 ├── app/
-│   ├── page.js              # Landing page con selector de contexto + grid de agentes
+│   ├── page.js              # Landing page con access gate, selector de contexto + grid de agentes
 │   ├── layout.js             # Layout root
 │   ├── globals.css           # Estilos globales + Tailwind
 │   └── favicon.ico
@@ -200,10 +207,29 @@ public/
 
 ---
 
+## Deployment (Google Cloud Run)
+
+**URL:** `https://sanemos-live-XXXXX.us-central1.run.app`
+
+Deploy sin Dockerfile usando Buildpacks (detecta Next.js automáticamente):
+
+```bash
+gcloud config set project sanemos-ai-live-demo
+gcloud services enable run.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com
+gcloud run deploy sanemos-live --source . --region us-central1 --allow-unauthenticated \
+  --set-build-env-vars NEXT_PUBLIC_GEMINI_API_KEY=tu-key,NEXT_PUBLIC_ACCESS_CODE=tu-codigo \
+  --set-env-vars NEXT_PUBLIC_GEMINI_API_KEY=tu-key,NEXT_PUBLIC_ACCESS_CODE=tu-codigo
+```
+
+> **Nota:** No se usa Dockerfile porque `--set-build-env-vars` no pasa variables dentro del Docker build. Buildpacks sí las pasan correctamente al `npm run build` de Next.js. Se incluye `Dockerfile.reference` como referencia para builds locales con Docker.
+
+---
+
 ## APIs de Google Utilizadas
 
 1. **Gemini Multimodal Live API** (WebSocket) — Conversación de voz bidireccional en tiempo real con function calling
 2. **Gemini REST API** (`gemini-2.5-flash:generateContent`) — Generación de resumen post-sesión
+3. **Google Cloud Run** — Hosting de la aplicación Next.js
 
 ---
 
