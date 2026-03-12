@@ -211,17 +211,19 @@ public/
 
 **URL:** `https://sanemos-live-XXXXX.us-central1.run.app`
 
-Deploy sin Dockerfile usando Buildpacks (detecta Next.js automáticamente):
+Deploy usando Cloud Build con `cloudbuild.yaml` (pasa las variables de entorno como `--build-arg` al Dockerfile):
 
 ```bash
+# Setup inicial (una vez)
 gcloud config set project sanemos-ai-live-demo
 gcloud services enable run.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com
-gcloud run deploy sanemos-live --source . --region us-central1 --allow-unauthenticated \
-  --set-build-env-vars NEXT_PUBLIC_GEMINI_API_KEY=tu-key,NEXT_PUBLIC_ACCESS_CODE=tu-codigo \
-  --set-env-vars NEXT_PUBLIC_GEMINI_API_KEY=tu-key,NEXT_PUBLIC_ACCESS_CODE=tu-codigo
+
+# Deploy
+gcloud builds submit --config cloudbuild.yaml \
+  --substitutions=_NEXT_PUBLIC_GEMINI_API_KEY=tu-key,_NEXT_PUBLIC_ACCESS_CODE=tu-codigo
 ```
 
-> **Nota:** No se usa Dockerfile porque `--set-build-env-vars` no pasa variables dentro del Docker build. Buildpacks sí las pasan correctamente al `npm run build` de Next.js. Se incluye `Dockerfile.reference` como referencia para builds locales con Docker.
+> **Nota:** Las variables `NEXT_PUBLIC_*` de Next.js deben estar disponibles en **build time** (se incrustan en el bundle del cliente). El `cloudbuild.yaml` las pasa como `--build-arg` al `docker build`, garantizando que lleguen al `npm run build`.
 
 ---
 

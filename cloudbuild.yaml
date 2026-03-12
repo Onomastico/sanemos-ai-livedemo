@@ -1,0 +1,35 @@
+steps:
+  # Build Docker image with NEXT_PUBLIC_* build args
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--build-arg=NEXT_PUBLIC_GEMINI_API_KEY=${_NEXT_PUBLIC_GEMINI_API_KEY}'
+      - '--build-arg=NEXT_PUBLIC_ACCESS_CODE=${_NEXT_PUBLIC_ACCESS_CODE}'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/sanemos-live:$BUILD_ID'
+      - '.'
+
+  # Push image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/sanemos-live:$BUILD_ID'
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'sanemos-live'
+      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/sanemos-live:$BUILD_ID'
+      - '--region=us-central1'
+      - '--allow-unauthenticated'
+      - '--port=3000'
+      - '--memory=512Mi'
+
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/sanemos-live:$BUILD_ID'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

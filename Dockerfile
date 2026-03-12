@@ -1,6 +1,5 @@
-# Dockerfile de referencia para deploy manual con Docker
-# No se usa en Cloud Run (se usan Buildpacks para manejar env vars correctamente)
-# Para usar este Dockerfile localmente: docker build --build-arg NEXT_PUBLIC_GEMINI_API_KEY=tu-key -t sanemos-live .
+# Dockerfile for Cloud Run deployment via cloudbuild.yaml
+# Build args are passed automatically by cloudbuild.yaml
 
 FROM node:20-alpine AS builder
 WORKDIR /app
