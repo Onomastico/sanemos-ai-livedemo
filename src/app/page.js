@@ -1,65 +1,170 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from 'react';
+import { getAllAgents } from '@/lib/agents';
+import Image from 'next/image';
+import GeminiLiveSession from '@/components/GeminiLiveSession';
 
 export default function Home() {
+  const agents = getAllAgents();
+  const [apiKey, setApiKey] = useState(process.env.NEXT_PUBLIC_GEMINI_API_KEY || '');
+  const [selectedAgent, setSelectedAgent] = useState(null);
+
+  if (selectedAgent) {
+    return (
+      <GeminiLiveSession
+        agent={selectedAgent}
+        apiKey={apiKey}
+        onClose={() => setSelectedAgent(null)}
+      />
+    );
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.js file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <main className="min-h-screen bg-[url('/bg-texture.svg')] bg-cover bg-center flex flex-col items-center justify-center p-6 sm:p-12 relative overflow-hidden">
+
+      {/* Decorative background blobs */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-900/10 blur-[120px] rounded-full pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-[#7B8FD4]/10 blur-[150px] rounded-full pointer-events-none" />
+
+      <header className="text-center mb-16 z-10 w-full">
+        <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight mb-4 bg-gradient-to-r from-[#9CCF6A] to-[#5FB7A6] text-transparent bg-clip-text">
+          Sanemos AI <span className="text-white">Live</span>
+        </h1>
+        <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto font-medium mb-8">
+          Habla directamente con nuestros agentes de apoyo emocional propulsados por la nueva Gemini Multimodal Live API. Experimenta latencia ultrabaja y detección de crisis en tiempo real.
+        </p>
+
+        <div className="max-w-md mx-auto relative group">
+          <input
+            type="password"
+            placeholder="Pega tu Google Gemini API Key aquí..."
+            className="w-full bg-black/40 border border-white/10 rounded-full px-6 py-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#9CCF6A] transition-all"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+          />
+          <p className="text-xs text-gray-500 mt-3 flex items-center justify-center gap-2">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M12 16V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            La llave solo se usa en tu navegador (Client-side WebSocket).
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl z-10">
+        {agents.map((agent) => (
+          <button
+            key={agent.id}
+            onClick={() => {
+              if (!apiKey) {
+                alert('Por favor ingresa tu API Key primero para probar la demo.');
+                return;
+              }
+              setSelectedAgent(agent);
+            }}
+            className="flex flex-col text-left overflow-hidden bg-[#1E2525] border border-white/10 rounded-3xl cursor-pointer transition-all duration-300 hover:-translate-y-1 group relative"
+            style={{
+              '--agent-color': agent.color,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = agent.color;
+              e.currentTarget.style.boxShadow = `0 8px 32px ${agent.color}40`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+              e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.2)';
+            }}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+            {/* Hero Area */}
+            <div
+              className="relative h-[140px] flex items-center justify-center shrink-0 w-full"
+              style={{
+                background: `linear-gradient(160deg, ${agent.color}30, ${agent.color}10)`
+              }}
+            >
+              <div
+                className="w-[88px] h-[88px] rounded-full overflow-hidden relative border-[3px] shadow-[0_0_20px_var(--agent-color)] transition-all duration-300 group-hover:scale-105 group-hover:shadow-[0_0_32px_var(--agent-color)] bg-[#121B1A]"
+                style={{ borderColor: agent.color }}
+              >
+                <Image
+                  src={agent.avatar}
+                  alt={agent.name}
+                  fill
+                  className="object-cover"
+                  unoptimized
+                />
+              </div>
+              <span className="absolute top-3 right-4 text-xl opacity-70 pointer-events-none">{agent.emoji}</span>
+            </div>
+
+            {/* Identity */}
+            <div className="pt-4 px-6 pb-2 flex flex-col gap-1">
+              <h3 className="font-bold text-xl text-white m-0">{agent.name}</h3>
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: agent.color }}>
+                {agent.focus}
+              </span>
+            </div>
+
+            {/* Quote */}
+            {agent.quote && (
+              <p
+                className="mx-6 mb-2 text-sm italic text-gray-400 leading-relaxed py-2 px-3 rounded-r bg-white/5 border-l-2"
+                style={{ borderLeftColor: agent.color }}
+              >
+                {agent.quote}
+              </p>
+            )}
+
+            {/* Description */}
+            <p className="mx-6 mb-4 text-sm text-gray-400 leading-[1.65] grow">
+              {agent.description}
+            </p>
+
+            {/* Traits */}
+            {agent.traits && (
+              <div className="flex flex-wrap gap-2 px-6 mb-4">
+                {agent.traits.map(trait => (
+                  <span
+                    key={trait}
+                    className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-medium border"
+                    style={{
+                      backgroundColor: `${agent.color}20`,
+                      color: agent.color,
+                      borderColor: `${agent.color}40`
+                    }}
+                  >
+                    {trait}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="flex items-center justify-between p-3 px-6 border-t border-white/10 mt-auto">
+              {agent.userCount !== undefined ? (
+                <span className="text-xs font-medium text-gray-500">
+                  👥 {agent.userCount} acompañadas
+                </span>
+              ) : (
+                <span />
+              )}
+              <span className="text-sm font-semibold transition-all group-hover:tracking-wide" style={{ color: agent.color }}>
+                Hablar →
+              </span>
+            </div>
+
+            {/* Glow effect at bottom right */}
+            <div
+              className="absolute -bottom-[60px] -right-[60px] w-[160px] h-[160px] rounded-full opacity-5 transition-opacity duration-300 pointer-events-none group-hover:opacity-10"
+              style={{ backgroundColor: agent.color }}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+          </button>
+        ))}
+      </div>
+
+      <footer className="mt-16 text-sm text-gray-500 z-10 font-medium">
+        Demo for Google Gemini Live Agent Challenge • sanemos.ai
+      </footer>
+    </main>
   );
 }
