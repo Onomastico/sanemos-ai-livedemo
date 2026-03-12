@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getAllAgents } from '@/lib/agents';
+import { USER_CONTEXTS, detectCountry } from '@/lib/userContexts';
 import Image from 'next/image';
 import GeminiLiveSession from '@/components/GeminiLiveSession';
 
@@ -9,12 +10,20 @@ export default function Home() {
   const agents = getAllAgents();
   const [apiKey, setApiKey] = useState(process.env.NEXT_PUBLIC_GEMINI_API_KEY || '');
   const [selectedAgent, setSelectedAgent] = useState(null);
+  const [selectedContext, setSelectedContext] = useState(USER_CONTEXTS[0]);
+  const [detectedCountry, setDetectedCountry] = useState(null);
+
+  useEffect(() => {
+    detectCountry().then(setDetectedCountry);
+  }, []);
 
   if (selectedAgent) {
     return (
       <GeminiLiveSession
         agent={selectedAgent}
         apiKey={apiKey}
+        userContext={selectedContext}
+        userCountry={detectedCountry}
         onClose={() => setSelectedAgent(null)}
       />
     );
@@ -51,6 +60,40 @@ export default function Home() {
           </div>
         )}
       </header>
+
+      {/* Context Selection */}
+      <section className="w-full max-w-6xl z-10 mb-10">
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4 text-center">
+          Selecciona un perfil de usuario para la demo
+          {detectedCountry && <span className="text-gray-600 normal-case tracking-normal font-normal"> — País detectado: {detectedCountry}</span>}
+        </h2>
+        <div className="flex flex-wrap justify-center gap-3">
+          {USER_CONTEXTS.map((ctx) => (
+            <button
+              key={ctx.id}
+              onClick={() => setSelectedContext(ctx)}
+              className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border transition-all duration-200 text-left ${
+                selectedContext.id === ctx.id
+                  ? 'bg-white/10 border-[#9CCF6A] shadow-[0_0_12px_rgba(156,207,106,0.2)]'
+                  : 'bg-white/[0.03] border-white/10 hover:bg-white/[0.06] hover:border-white/20'
+              }`}
+            >
+              <span className="text-xl">{ctx.emoji}</span>
+              <div className="flex flex-col">
+                <span className={`text-sm font-medium ${selectedContext.id === ctx.id ? 'text-white' : 'text-gray-300'}`}>
+                  {ctx.name}
+                </span>
+                <span className="text-xs text-gray-500">{ctx.summary}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+        {selectedContext.detail && (
+          <p className="text-xs text-gray-500 text-center mt-3 max-w-2xl mx-auto italic">
+            &quot;{selectedContext.detail}&quot;
+          </p>
+        )}
+      </section>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl z-10">
         {agents.map((agent) => (

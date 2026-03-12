@@ -2,134 +2,358 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useGeminiLive } from '@/hooks/useGeminiLive';
+import { getAgent } from '@/lib/agents';
 import { maskPII } from '@/lib/piiScrubber';
+import BreathingVisualizer from './BreathingVisualizer';
+import SessionSummary from './SessionSummary';
 
-export default function GeminiLiveSession({ agent: initialAgent, apiKey, onClose }) {
+const EMOTION_COLORS = {
+    sadness: '#4A90D9', anger: '#D94A4A', fear: '#9B59B6',
+    guilt: '#7F8C8D', hope: '#2ECC71', calm: '#1ABC9C',
+    love: '#E91E8F', numbness: '#636E72'
+};
+
+const EMOTION_LABELS = {
+    sadness: 'Tristeza', anger: 'Enojo', fear: 'Miedo',
+    guilt: 'Culpa', hope: 'Esperanza', calm: 'Calma',
+    love: 'Amor', numbness: 'Vacío'
+};
+
+export default function GeminiLiveSession({ agent: initialAgent, apiKey, userContext, userCountry, onClose }) {
     const [isFaroMode, setIsFaroMode] = useState(false);
-    const containerRef = useRef(null);
+    const [showSidePanel, setShowSidePanel] = useState(false);
+    const [showSummary, setShowSummary] = useState(false);
+    const sidePanelRef = useRef(null);
+    const videoPipRef = useRef(null);
 
     const handleEscalateToFaro = () => {
         setIsFaroMode(true);
+        const faroAgent = getAgent('faro');
+        if (faroAgent) switchAgent(faroAgent, "El usuario acaba de ser transferido porque expresó pensamientos de hacerse daño. Preséntate como Faro, el agente de crisis, y responde con empatía inmediata en español. Hazle saber que estás aquí para ayudarle.");
     };
 
-    const { status, agent, transcripts, error, connect, disconnect } = useGeminiLive(apiKey, initialAgent, handleEscalateToFaro);
+    const {
+        status, agent, messages, currentMessage, error,
+        isSpeaking, isAiSpeaking, emotion, breathingExercise, setBreathingExercise,
+        cameraEnabled, toggleCamera, videoStreamRef,
+        switchAgent, connect, disconnect
+    } = useGeminiLive(apiKey, initialAgent, handleEscalateToFaro, userContext, userCountry);
 
     useEffect(() => {
         connect();
         return () => {
             disconnect();
         };
-    }, [connect, disconnect]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
+    // Auto-scroll side panel
     useEffect(() => {
-        if (containerRef.current) {
-            containerRef.current.scrollTop = containerRef.current.scrollHeight;
+        if (sidePanelRef.current) {
+            sidePanelRef.current.scrollTop = sidePanelRef.current.scrollHeight;
         }
-    }, [transcripts]);
+    }, [messages]);
 
-    // Determine active colors
+    // Attach video stream to PIP element — poll briefly because stream is created async
+    useEffect(() => {
+        if (!cameraEnabled) return;
+        let attempts = 0;
+        const tryAttach = () => {
+            if (videoPipRef.current && videoStreamRef.current) {
+                videoPipRef.current.srcObject = videoStreamRef.current;
+            } else if (attempts < 20) {
+                attempts++;
+                setTimeout(tryAttach, 150);
+            }
+        };
+        tryAttach();
+    }, [cameraEnabled]);
+
     const activeColor = isFaroMode ? '#E85D75' : agent.color;
     const activeName = isFaroMode ? 'Faro (Crisis Agent)' : agent.name;
+    const emotionColor = emotion ? EMOTION_COLORS[emotion.emotion] : null;
+    const emotionOpacity = emotion ? Math.min(emotion.intensity / 5, 1) * 0.3 : 0;
+
+    // Exit handler — show summary if meaningful conversation happened
+    const handleExit = () => {
+        if (messages.length > 2) {
+            disconnect();
+            setShowSummary(true);
+        } else {
+            onClose();
+        }
+    };
+
+    // Show summary screen
+    if (showSummary) {
+        return (
+            <SessionSummary
+                messages={messages}
+                agentName={activeName}
+                agentColor={activeColor}
+                apiKey={apiKey}
+                onClose={onClose}
+            />
+        );
+    }
 
     return (
-        <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center overflow-hidden" style={{ '--dynamic-color': activeColor }}>
-            {/* Background Glow */}
+        <div className="fixed inset-0 bg-black z-50 flex overflow-hidden" style={{ '--dynamic-color': activeColor }}>
+            {/* Background Glow — blends agent color + emotion color */}
             <div
-                className="absolute inset-0 transition-all duration-1000 opacity-20"
+                className="absolute inset-0 transition-all duration-1000 opacity-20 pointer-events-none"
                 style={{ background: `radial-gradient(circle at center, var(--dynamic-color) 0%, transparent 70%)` }}
             />
+            {emotionColor && (
+                <div
+                    className="absolute inset-0 transition-all duration-2000 pointer-events-none"
+                    style={{
+                        background: `radial-gradient(circle at center, ${emotionColor} 0%, transparent 60%)`,
+                        opacity: emotionOpacity
+                    }}
+                />
+            )}
 
             {isFaroMode && (
                 <div className="absolute top-0 w-full bg-[#E85D75] text-white py-2 px-4 shadow-lg text-center font-bold z-50 text-sm">
-                    🚨 MODO DE RIESGO VITAL ACTIVADO. Por favor, si estás en peligro inminente llama al *4141 en Chile o acude a urgencias.
+                    MODO DE RIESGO VITAL ACTIVADO. Por favor, si estas en peligro inminente llama al *4141 en Chile o acude a urgencias.
                 </div>
             )}
 
-            {/* Header */}
-            <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-20">
-                <button
-                    onClick={onClose}
-                    className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-full text-white backdrop-blur-md transition-colors text-sm font-medium z-50 mt-8 sm:mt-0"
-                >
-                    ← Salir de la sala
-                </button>
-                <div className="flex items-center gap-3 bg-white/5 px-4 py-2 rounded-full backdrop-blur-md border border-white/10 mt-8 sm:mt-0">
-                    <div className={`w-3 h-3 rounded-full ${status === 'connected' ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'}`} />
-                    <span className="text-white text-sm font-medium capitalize">{status}</span>
+            {/* ===== SIDE PANEL — Conversation History ===== */}
+            <div className={`
+                z-30 flex flex-col border-r border-white/[0.06] bg-black/80 backdrop-blur-md shrink-0 transition-all duration-300
+                fixed md:relative inset-y-0 left-0
+                ${showSidePanel ? 'w-80 translate-x-0' : 'w-0 -translate-x-full md:w-80 md:translate-x-0'}
+            `}>
+                <div className="p-4 border-b border-white/[0.06] flex items-center justify-between shrink-0">
+                    <h3 className="text-sm font-semibold text-gray-400">Historial</h3>
+                    <button
+                        onClick={() => setShowSidePanel(false)}
+                        className="md:hidden text-gray-500 hover:text-gray-300 text-xs"
+                    >
+                        Cerrar
+                    </button>
                 </div>
-            </div>
-
-            {/* Main Avatar Area */}
-            <div className="relative z-10 flex flex-col items-center mt-24 sm:mt-12 mb-8">
                 <div
-                    className="w-48 h-48 sm:w-64 sm:h-64 rounded-full relative overflow-hidden shadow-2xl transition-all duration-1000"
-                    style={{
-                        boxShadow: `0 0 80px ${activeColor}50`,
-                        border: `2px solid ${activeColor}80`
-                    }}
+                    ref={sidePanelRef}
+                    className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 scroll-smooth"
                 >
-                    <div className="absolute inset-0 flex items-center justify-center text-7xl z-0 bg-black/50">{isFaroMode ? '🚨' : agent.emoji}</div>
-                    {/* We import normal img since Next/Image requires configured domains, but these are local so it's fine */}
-                    <img
-                        src={isFaroMode ? '/faro.png' : agent.avatar}
-                        alt={activeName}
-                        className="w-full h-full object-cover z-10 relative pointer-events-none"
-                    />
+                    {messages.length === 0 && (
+                        <p className="text-gray-600 text-xs text-center mt-8">La conversación aparecerá aquí...</p>
+                    )}
+                    {messages.map((m, i) => (
+                        <div key={i} className={`flex w-full ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            <div
+                                className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed ${
+                                    m.sender === 'user'
+                                        ? 'bg-white/[0.08] text-white/70 rounded-br-sm'
+                                        : 'text-gray-300 rounded-bl-sm'
+                                }`}
+                                style={m.sender === 'ai' ? { backgroundColor: activeColor + '15' } : {}}
+                            >
+                                {m.sender === 'ai' && (
+                                    <span className="text-[10px] font-medium block mb-1" style={{ color: activeColor + '90' }}>
+                                        {activeName}
+                                    </span>
+                                )}
+                                {m.sender === 'user' && (
+                                    <span className="text-[10px] font-medium block mb-1 text-white/40">
+                                        Tú
+                                    </span>
+                                )}
+                                {maskPII(m.text)}
+                            </div>
+                        </div>
+                    ))}
                 </div>
-                <h2 className="text-3xl sm:text-4xl font-bold text-white mt-8 mb-2 transition-colors duration-500">
-                    {activeName}
-                </h2>
-                <p className="text-gray-400 text-sm">{status === 'connected' ? 'Escuchando y hablando...' : 'Conectando...'}</p>
-
-                {error && (
-                    <div className="mt-4 bg-red-500/20 text-red-200 border border-red-500/50 rounded-lg px-4 py-3 text-sm max-w-md text-center">
-                        {error}
-                    </div>
-                )}
             </div>
 
-            {/* Transcripts Area (Scrubbed) */}
-            <div
-                ref={containerRef}
-                className="z-10 w-full max-w-2xl px-6 flex-1 overflow-y-auto pb-24 flex flex-col gap-4 scroll-smooth"
-            >
-                {transcripts.length === 0 && status === 'connected' && (
-                    <div className="text-center text-gray-500 italic mt-8 text-sm">
-                        Comienza a hablar con naturalidad...
-                    </div>
-                )}
-                {transcripts.map((t, i) => (
-                    <div key={i} className={`flex w-full ${t.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div
-                            className={`max-w-[85%] rounded-2xl px-5 py-3 text-sm leading-relaxed ${t.sender === 'user'
-                                    ? 'bg-white/10 text-white rounded-br-none border border-white/5'
-                                    : 'bg-black/40 text-gray-200 rounded-bl-none border border-white/10'
-                                }`}
+            {/* ===== CENTER — Avatar + Live Message ===== */}
+            <div className="flex-1 flex flex-col items-center overflow-hidden relative">
+
+                {/* Header */}
+                <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-20">
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleExit}
+                            className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-full text-white backdrop-blur-md transition-colors text-sm font-medium mt-8 sm:mt-0"
                         >
-                            {maskPII(t.text)}
+                            Salir de la sala
+                        </button>
+                        {/* Mobile: toggle side panel */}
+                        <button
+                            onClick={() => setShowSidePanel(!showSidePanel)}
+                            className="md:hidden bg-white/10 hover:bg-white/20 px-3 py-2 rounded-full text-white backdrop-blur-md transition-colors text-xs font-medium mt-8 sm:mt-0"
+                        >
+                            Historial
+                        </button>
+                    </div>
+                    <div className="flex items-center gap-2 mt-8 sm:mt-0">
+                        {/* Camera toggle */}
+                        <button
+                            onClick={toggleCamera}
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-md transition-colors text-xs font-medium border ${
+                                cameraEnabled
+                                    ? 'bg-green-500/20 border-green-500/40 text-green-300'
+                                    : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
+                            }`}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                            </svg>
+                            {cameraEnabled ? 'Cam' : 'Cam'}
+                        </button>
+                        {/* Status indicator */}
+                        <div className="flex items-center gap-3 bg-white/5 px-4 py-2 rounded-full backdrop-blur-md border border-white/10">
+                            <div className={`w-3 h-3 rounded-full ${status === 'connected' ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'}`} />
+                            <span className="text-white text-sm font-medium capitalize">{status}</span>
                         </div>
                     </div>
-                ))}
-            </div>
+                </div>
 
-            {/* Voice Visualizer Mock at bottom */}
-            <div className="absolute bottom-0 w-full h-32 bg-gradient-to-t from-black via-black/80 to-transparent z-20 flex justify-center items-end pb-8 pointer-events-none">
-                {status === 'connected' && (
-                    <div className="flex items-end gap-1.5 h-16 w-full max-w-sm justify-center">
-                        {[...Array(15)].map((_, i) => (
-                            <div
-                                key={i}
-                                className="w-2 rounded-t-full origin-bottom"
-                                style={{
-                                    backgroundColor: activeColor,
-                                    height: `${Math.random() * 60 + 20}%`,
-                                    opacity: 0.8,
-                                    transition: 'height 0.2s ease-in-out'
-                                }}
-                            />
-                        ))}
+                {/* Main Avatar Area */}
+                <div className="relative z-10 flex flex-col items-center mt-28 sm:mt-20 mb-4 shrink-0">
+                    <div
+                        className="w-40 h-40 sm:w-48 sm:h-48 rounded-full relative overflow-hidden shadow-2xl transition-all duration-300"
+                        style={{
+                            boxShadow: isAiSpeaking
+                                ? `0 0 120px ${activeColor}90, 0 0 60px ${activeColor}60${emotionColor ? `, 0 0 80px ${emotionColor}40` : ''}`
+                                : `0 0 80px ${activeColor}50`,
+                            border: `2px solid ${isAiSpeaking ? activeColor : activeColor + '80'}`,
+                            transform: isAiSpeaking ? 'scale(1.03)' : 'scale(1)'
+                        }}
+                    >
+                        <div className="absolute inset-0 flex items-center justify-center text-7xl z-0 bg-black/50">{isFaroMode ? '' : agent.emoji}</div>
+                        <img
+                            src={isFaroMode ? '/faro.png' : agent.avatar}
+                            alt={activeName}
+                            className="w-full h-full object-cover z-10 relative pointer-events-none"
+                        />
+                    </div>
+                    <h2 className="text-2xl sm:text-3xl font-bold text-white mt-5 mb-1 transition-colors duration-500">
+                        {activeName}
+                    </h2>
+                    <p className="text-gray-400 text-sm">
+                        {status !== 'connected'
+                            ? 'Conectando...'
+                            : isAiSpeaking
+                                ? <span style={{ color: activeColor }}>Hablando...</span>
+                                : isSpeaking
+                                    ? <span className="text-white">Te estoy escuchando...</span>
+                                    : isFaroMode
+                                        ? 'Estoy aquí contigo...'
+                                        : 'Esperando...'}
+                    </p>
+
+                    {/* Emotion badge */}
+                    {emotion && !isFaroMode && (
+                        <div
+                            className="mt-2 px-3 py-1 rounded-full text-[11px] font-medium transition-all duration-700 border"
+                            style={{
+                                color: EMOTION_COLORS[emotion.emotion],
+                                backgroundColor: EMOTION_COLORS[emotion.emotion] + '15',
+                                borderColor: EMOTION_COLORS[emotion.emotion] + '30'
+                            }}
+                        >
+                            {EMOTION_LABELS[emotion.emotion] || emotion.emotion}
+                            <span className="ml-1.5 opacity-60">{'●'.repeat(Math.min(emotion.intensity, 5))}</span>
+                        </div>
+                    )}
+
+                    {error && (
+                        <div className="mt-3 bg-red-500/20 text-red-200 border border-red-500/50 rounded-lg px-4 py-2 text-xs max-w-sm text-center">
+                            {error}
+                        </div>
+                    )}
+                </div>
+
+                {/* Breathing Visualizer (Serena only) */}
+                {breathingExercise && agent.id === 'serena' && (
+                    <div className="z-10 w-full max-w-md px-6">
+                        <BreathingVisualizer
+                            exercise={breathingExercise}
+                            agentColor={activeColor}
+                            onComplete={() => setBreathingExercise(null)}
+                        />
                     </div>
                 )}
+
+                {/* Live message bubble — single growing message */}
+                <div className="z-10 w-full max-w-lg px-6 flex-1 min-h-0 flex flex-col items-center gap-3 mb-36 overflow-y-auto">
+                    {currentMessage && (
+                        <div className={`w-full flex ${currentMessage.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            <div
+                                className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                                    currentMessage.sender === 'user'
+                                        ? 'bg-white/[0.08] text-white/80 rounded-br-sm'
+                                        : 'text-gray-200 rounded-bl-sm'
+                                }`}
+                                style={currentMessage.sender === 'ai' ? { backgroundColor: activeColor + '20' } : {}}
+                            >
+                                {currentMessage.sender === 'ai' && (
+                                    <span className="text-[11px] font-medium block mb-1" style={{ color: activeColor }}>
+                                        {activeName}
+                                    </span>
+                                )}
+                                {currentMessage.sender === 'user' && (
+                                    <span className="text-[11px] font-medium block mb-1 text-white/50">
+                                        Tú
+                                    </span>
+                                )}
+                                {maskPII(currentMessage.text)}
+                                <span className="inline-block w-1.5 h-4 ml-1 rounded-sm animate-pulse" style={{ backgroundColor: currentMessage.sender === 'ai' ? activeColor : 'rgba(255,255,255,0.5)' }} />
+                            </div>
+                        </div>
+                    )}
+                    {!currentMessage && messages.length === 0 && status === 'connected' && (
+                        <p className="text-gray-600 text-xs mt-4">
+                            {isFaroMode ? 'Faro va a hablar contigo en un momento...' : 'Comienza a hablar...'}
+                        </p>
+                    )}
+                </div>
+
+                {/* Camera PIP preview */}
+                {cameraEnabled && (
+                    <div className="absolute bottom-36 right-4 z-30 rounded-xl overflow-hidden border-2 border-white/20 shadow-lg">
+                        <video
+                            ref={videoPipRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            className="w-[120px] h-[90px] object-cover mirror"
+                            style={{ transform: 'scaleX(-1)' }}
+                        />
+                    </div>
+                )}
+
+                {/* Voice Visualizer at bottom */}
+                <div className="absolute bottom-0 w-full h-32 bg-gradient-to-t from-black via-black/80 to-transparent z-20 flex flex-col justify-end items-center pb-6 pointer-events-none gap-3">
+                    {isSpeaking && status === 'connected' && (
+                        <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md rounded-full px-4 py-1.5 border border-white/20">
+                            <div className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
+                            <span className="text-white/80 text-xs font-medium">Mic activo</span>
+                        </div>
+                    )}
+                    {status === 'connected' && (
+                        <div className="flex items-end gap-1.5 h-12 w-full max-w-sm justify-center">
+                            {[...Array(15)].map((_, i) => (
+                                <div
+                                    key={i}
+                                    className="w-2 rounded-t-full origin-bottom"
+                                    style={{
+                                        backgroundColor: isSpeaking ? '#ffffff' : activeColor,
+                                        height: (isSpeaking || isAiSpeaking)
+                                            ? `${Math.random() * 60 + 20}%`
+                                            : '10%',
+                                        opacity: (isSpeaking || isAiSpeaking) ? 0.8 : 0.3,
+                                        transition: 'height 0.15s ease-in-out, opacity 0.3s, background-color 0.3s'
+                                    }}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

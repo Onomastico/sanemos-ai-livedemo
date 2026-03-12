@@ -1,4 +1,13 @@
 # TODO
 - [x] Fix WebSocket connection error in useGeminiLive.js
 - [x] Determine correct Gemini Live API model and endpoint
-- [ ] Set up Bento UI styles for the agent cards
+- [x] Fix React strict mode double-mount reconnect loop
+- [x] Fix audio cutoff — gapless scheduled playback at 24kHz
+- [x] Add speaking indicators (user VAD + AI speaking state)
+- [x] Fix Faro crisis agent — disconnect/reconnect with new system prompt
+- [x] Fix transcription config — move to setup root level, camelCase
+- [x] Redesign transcript UI — live subtitles + collapsible history
+- [x] Fix Faro stuck after escalation — send context message to prime agent
+- [x] Fix media stream leak on agent switch
+- [ ] Deploy to Vercel (update NEXT_PUBLIC_GEMINI_API_KEY in dashboard)
+- [x] Set up Bento UI styles for the agent cards
