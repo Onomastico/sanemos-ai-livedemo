@@ -176,8 +176,12 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
     const [cameraEnabled, setCameraEnabled] = useState(false);
     const [socialPost, setSocialPost] = useState(null);         // { platform, post_text, occasion }
     const [uiToast, setUiToast] = useState(null);               // toast message string
+    const [latency, setLatency] = useState(null);                // WebSocket latency in ms
+    const [emotionHistory, setEmotionHistory] = useState([]);    // emotion timeline data
 
     const wsRef = useRef(null);
+    const lastAudioSentRef = useRef(null);                       // timestamp of last audio send
+    const latencyHistoryRef = useRef([]);                         // recent latency samples
     const audioContextRef = useRef(null);
     const playbackContextRef = useRef(null);
     const audioInputRef = useRef(null);
@@ -325,8 +329,17 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                     const dataStr = event.data instanceof Blob ? await event.data.text() : event.data;
                     const msg = JSON.parse(dataStr);
 
-                    // Handle audio playback from model
+                    // Handle audio playback from model + latency measurement
                     if (msg.serverContent?.modelTurn?.parts) {
+                        // Measure latency on first audio chunk of a response
+                        if (lastAudioSentRef.current) {
+                            const rtt = Math.round(performance.now() - lastAudioSentRef.current);
+                            lastAudioSentRef.current = null;
+                            latencyHistoryRef.current.push(rtt);
+                            if (latencyHistoryRef.current.length > 5) latencyHistoryRef.current.shift();
+                            const avg = Math.round(latencyHistoryRef.current.reduce((a, b) => a + b, 0) / latencyHistoryRef.current.length);
+                            setLatency(avg);
+                        }
                         for (const part of msg.serverContent.modelTurn.parts) {
                             if (part.inlineData?.mimeType?.startsWith('audio/pcm') && part.inlineData?.data) {
                                 playPcmAudio(part.inlineData.data);
@@ -387,15 +400,21 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                             }
                             if (call.name === 'report_text_emotion') {
                                 const args = call.args || {};
-                                setEmotion(prev => ({ ...prev, text: { emotion: args.emotion, intensity: args.intensity || 3 } }));
+                                const entry = { emotion: args.emotion, intensity: args.intensity || 3 };
+                                setEmotion(prev => ({ ...prev, text: entry }));
+                                setEmotionHistory(prev => [...prev, { timestamp: Date.now(), source: 'text', ...entry }]);
                             }
                             if (call.name === 'report_voice_emotion') {
                                 const args = call.args || {};
-                                setEmotion(prev => ({ ...prev, voice: { emotion: args.emotion, intensity: args.intensity || 3 } }));
+                                const entry = { emotion: args.emotion, intensity: args.intensity || 3 };
+                                setEmotion(prev => ({ ...prev, voice: entry }));
+                                setEmotionHistory(prev => [...prev, { timestamp: Date.now(), source: 'voice', ...entry }]);
                             }
                             if (call.name === 'report_facial_emotion') {
                                 const args = call.args || {};
-                                setEmotion(prev => ({ ...prev, facial: { emotion: args.emotion, intensity: args.intensity || 3 } }));
+                                const entry = { emotion: args.emotion, intensity: args.intensity || 3 };
+                                setEmotion(prev => ({ ...prev, facial: entry }));
+                                setEmotionHistory(prev => [...prev, { timestamp: Date.now(), source: 'facial', ...entry }]);
                             }
                             if (call.name === 'start_breathing_exercise') {
                                 const args = call.args || {};
@@ -564,6 +583,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                     }
                     const base64Audio = btoa(binary);
 
+                    lastAudioSentRef.current = performance.now();
                     wsRef.current.send(JSON.stringify({
                         realtimeInput: { mediaChunks: [{ mimeType: "audio/pcm;rate=16000", data: base64Audio }] }
                     }));
@@ -754,6 +774,8 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
         socialPost,
         setSocialPost,
         uiToast,
+        latency,
+        emotionHistory,
         connect,
         disconnect
     };

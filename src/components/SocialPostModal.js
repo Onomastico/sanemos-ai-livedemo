@@ -1,17 +1,19 @@
 "use client";
 
 import { useState } from 'react';
+import { useI18n } from '@/i18n/I18nContext';
 
 const PLATFORM_INFO = {
     facebook: { icon: '📘', label: 'Facebook' },
     instagram: { icon: '📸', label: 'Instagram' },
     twitter: { icon: '𝕏', label: 'X / Twitter' },
-    general: { icon: '📝', label: 'Red Social' }
 };
 
 export default function SocialPostModal({ post, agentColor, onClose }) {
+    const { t } = useI18n();
     const [copied, setCopied] = useState(false);
-    const platform = PLATFORM_INFO[post.platform] || PLATFORM_INFO.general;
+    const defaultPlatform = { icon: '📝', label: t('social.socialNetwork') };
+    const platform = PLATFORM_INFO[post.platform] || defaultPlatform;
 
     const handleCopy = async () => {
         await navigator.clipboard.writeText(post.post_text);
@@ -67,13 +69,13 @@ export default function SocialPostModal({ post, agentColor, onClose }) {
                             border: `1px solid ${agentColor}40`
                         }}
                     >
-                        {copied ? 'Copiado!' : 'Copiar texto'}
+                        {copied ? t('social.copied') : t('social.copyText')}
                     </button>
                     <button
                         onClick={onClose}
                         className="px-5 py-2.5 rounded-full text-sm font-medium text-gray-400 bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
                     >
-                        Cerrar
+                        {t('social.close')}
                     </button>
                 </div>
             </div>

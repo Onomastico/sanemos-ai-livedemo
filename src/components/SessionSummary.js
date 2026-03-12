@@ -2,8 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { maskPII } from '@/lib/piiScrubber';
+import { useI18n } from '@/i18n/I18nContext';
+import EmotionTimeline from './EmotionTimeline';
 
-export default function SessionSummary({ messages, agentName, agentColor, apiKey, onClose }) {
+export default function SessionSummary({ messages, agentName, agentColor, apiKey, emotionHistory, onClose }) {
+    const { t } = useI18n();
     const [summary, setSummary] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -19,7 +22,7 @@ export default function SessionSummary({ messages, agentName, agentColor, apiKey
             setError(null);
 
             const transcript = messages
-                .map(m => `[${m.sender === 'user' ? 'Usuario' : agentName}]: ${m.text}`)
+                .map(m => `[${m.sender === 'user' ? t('summary.promptUser') : agentName}]: ${m.text}`)
                 .join('\n');
 
             const res = await fetch(
@@ -30,21 +33,7 @@ export default function SessionSummary({ messages, agentName, agentColor, apiKey
                     body: JSON.stringify({
                         contents: [{
                             parts: [{
-                                text: `Eres un asistente de apoyo emocional. Analiza esta transcripción de una sesión de apoyo emocional y genera un resumen compasivo EN ESPAÑOL con exactamente estas 4 secciones (usa estos títulos exactos):
-
-RESUMEN EMOCIONAL
-Un breve resumen gentil del arco emocional de la conversación (2-3 oraciones).
-
-TEMAS PRINCIPALES
-Los temas clave que surgieron (como lista con viñetas, 3-5 puntos).
-
-RECURSOS
-Recursos o próximos pasos relevantes basados en lo discutido (2-3 sugerencias).
-
-MENSAJE DE CIERRE
-Un mensaje cálido de cierre para el usuario (1-2 oraciones).
-
-Transcripción:\n${transcript}`
+                                text: t('summary.prompt') + transcript
                             }]
                         }],
                         generationConfig: { temperature: 0.7, maxOutputTokens: 4096 }
@@ -73,16 +62,19 @@ Transcripción:\n${transcript}`
         }
     };
 
-    // Parse summary sections for styled rendering
     const parseSections = (text) => {
-        const sectionTitles = ['RESUMEN EMOCIONAL', 'TEMAS PRINCIPALES', 'RECURSOS', 'MENSAJE DE CIERRE'];
+        const sectionTitles = [
+            t('summary.sectionEmotional'),
+            t('summary.sectionThemes'),
+            t('summary.sectionResources'),
+            t('summary.sectionClosing')
+        ];
         const sections = [];
         const lines = text.split('\n');
         let currentSection = null;
         let currentBody = [];
 
         for (const line of lines) {
-            // Strip markdown formatting: ### headers, ** bold **, leading/trailing symbols
             const cleaned = line.trim().replace(/^#{1,4}\s*/, '').replace(/\*{1,2}/g, '').trim();
             const matchedTitle = sectionTitles.find(s => cleaned.toUpperCase().startsWith(s));
             if (matchedTitle) {
@@ -95,14 +87,14 @@ Transcripción:\n${transcript}`
         }
         if (currentSection) sections.push({ title: currentSection, body: currentBody.join('\n').trim() });
 
-        return sections.length > 0 ? sections : [{ title: 'Resumen', body: text }];
+        return sections.length > 0 ? sections : [{ title: t('summary.fallbackTitle'), body: text }];
     };
 
     const sectionEmojis = {
-        'RESUMEN EMOCIONAL': '💙',
-        'TEMAS PRINCIPALES': '📋',
-        'RECURSOS': '🔗',
-        'MENSAJE DE CIERRE': '🌱'
+        [t('summary.sectionEmotional')]: '💙',
+        [t('summary.sectionThemes')]: '📋',
+        [t('summary.sectionResources')]: '🔗',
+        [t('summary.sectionClosing')]: '🌱'
     };
 
     return (
@@ -114,8 +106,8 @@ Transcripción:\n${transcript}`
                         style={{ backgroundColor: agentColor + '20', border: `2px solid ${agentColor}40` }}>
                         📝
                     </div>
-                    <h2 className="text-2xl font-bold text-white">Resumen de tu sesión</h2>
-                    <p className="text-gray-500 text-sm mt-1">con {agentName}</p>
+                    <h2 className="text-2xl font-bold text-white">{t('summary.title')}</h2>
+                    <p className="text-gray-500 text-sm mt-1">{t('summary.with', { name: agentName })}</p>
                 </div>
 
                 {/* Loading */}
@@ -123,7 +115,7 @@ Transcripción:\n${transcript}`
                     <div className="text-center py-12">
                         <div className="w-8 h-8 border-2 rounded-full animate-spin mx-auto mb-4"
                             style={{ borderColor: `${agentColor}40`, borderTopColor: agentColor }} />
-                        <p className="text-gray-400 text-sm">Generando tu resumen...</p>
+                        <p className="text-gray-400 text-sm">{t('summary.generating')}</p>
                     </div>
                 )}
 
@@ -137,7 +129,7 @@ Transcripción:\n${transcript}`
                             onClick={generateSummary}
                             className="text-sm px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
                         >
-                            Reintentar
+                            {t('summary.retry')}
                         </button>
                     </div>
                 )}
@@ -160,6 +152,13 @@ Transcripción:\n${transcript}`
                     </div>
                 )}
 
+                {/* Emotion Timeline */}
+                {emotionHistory && emotionHistory.length >= 2 && (
+                    <div className="rounded-xl p-5 bg-white/[0.03] border border-white/[0.06] mt-4">
+                        <EmotionTimeline emotionHistory={emotionHistory} agentColor={agentColor} />
+                    </div>
+                )}
+
                 {/* Actions */}
                 <div className="flex items-center justify-center gap-3 mt-8 mb-8">
                     {summary && (
@@ -172,14 +171,14 @@ Transcripción:\n${transcript}`
                                 backgroundColor: copied ? agentColor + '20' : 'transparent'
                             }}
                         >
-                            {copied ? 'Copiado!' : 'Copiar resumen'}
+                            {copied ? t('summary.copied') : t('summary.copySummary')}
                         </button>
                     )}
                     <button
                         onClick={onClose}
                         className="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors"
                     >
-                        Volver al inicio
+                        {t('summary.backHome')}
                     </button>
                 </div>
             </div>

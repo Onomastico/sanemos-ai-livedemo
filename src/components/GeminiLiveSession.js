@@ -4,9 +4,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useGeminiLive } from '@/hooks/useGeminiLive';
 import { getAgent } from '@/lib/agents';
 import { maskPII } from '@/lib/piiScrubber';
+import { useI18n } from '@/i18n/I18nContext';
 import BreathingVisualizer from './BreathingVisualizer';
 import SessionSummary from './SessionSummary';
 import SocialPostModal from './SocialPostModal';
+import LanguageToggle from './LanguageToggle';
+import OnboardingOverlay from './OnboardingOverlay';
 
 const EMOTION_COLORS = {
     sadness: '#4A90D9', anger: '#D94A4A', fear: '#9B59B6',
@@ -14,13 +17,8 @@ const EMOTION_COLORS = {
     love: '#E91E8F', numbness: '#636E72'
 };
 
-const EMOTION_LABELS = {
-    sadness: 'Tristeza', anger: 'Enojo', fear: 'Miedo',
-    guilt: 'Culpa', hope: 'Esperanza', calm: 'Calma',
-    love: 'Amor', numbness: 'Vacío'
-};
-
 export default function GeminiLiveSession({ agent: initialAgent, apiKey, userContext, userCountry, onClose }) {
+    const { t } = useI18n();
     const [isFaroMode, setIsFaroMode] = useState(false);
     const [showSidePanel, setShowSidePanel] = useState(false);
     const [showSummary, setShowSummary] = useState(false);
@@ -32,15 +30,15 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
     const handleEscalateToFaro = () => {
         setIsFaroMode(true);
         const faroAgent = getAgent('faro');
-        if (faroAgent) switchAgent(faroAgent, "El usuario acaba de ser transferido porque expresó pensamientos de hacerse daño. Preséntate como Faro, el agente de crisis, y responde con empatía inmediata en español. Hazle saber que estás aquí para ayudarle.");
+        if (faroAgent) switchAgent(faroAgent, t('session.faroEscalationContext'));
     };
 
     const handleSwitchAgent = (agentId) => {
         const newAgent = getAgent(agentId);
         if (!newAgent) return;
-        if (agentId === 'faro') return; // Faro only via crisis escalation
+        if (agentId === 'faro') return;
         setIsFaroMode(false);
-        switchAgent(newAgent, `El usuario pidió cambiar a hablar contigo. Preséntate brevemente como ${newAgent.name} y continúa la conversación con naturalidad en español.`);
+        switchAgent(newAgent, t('session.switchContext', { name: newAgent.name }));
     };
 
     const {
@@ -48,6 +46,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
         isSpeaking, isAiSpeaking, emotion, breathingExercise, setBreathingExercise,
         cameraEnabled, toggleCamera, videoStreamRef,
         socialPost, setSocialPost, uiToast,
+        latency, emotionHistory,
         switchAgent, connect, disconnect
     } = useGeminiLive(apiKey, initialAgent, handleEscalateToFaro, () => handleExitRef.current?.(), handleSwitchAgent, userContext, userCountry);
 
@@ -66,7 +65,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
         }
     }, [messages]);
 
-    // Attach video stream to PIP element — poll briefly because stream is created async
+    // Attach video stream to PIP element
     useEffect(() => {
         if (!cameraEnabled) return;
         let attempts = 0;
@@ -87,7 +86,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
     const emotionColor = primaryEmotion ? EMOTION_COLORS[primaryEmotion.emotion] : null;
     const emotionOpacity = primaryEmotion ? Math.min(primaryEmotion.intensity / 5, 1) * 0.3 : 0;
 
-    // Exit handler — show summary if meaningful conversation happened
+    // Exit handler
     const handleExit = () => {
         if (messages.length > 2) {
             disconnect();
@@ -98,7 +97,6 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
     };
     handleExitRef.current = handleExit;
 
-    // Show summary screen
     if (showSummary) {
         return (
             <SessionSummary
@@ -106,6 +104,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                 agentName={activeName}
                 agentColor={activeColor}
                 apiKey={apiKey}
+                emotionHistory={emotionHistory}
                 onClose={onClose}
             />
         );
@@ -113,7 +112,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
 
     return (
         <div className="fixed inset-0 bg-black z-50 flex overflow-hidden" style={{ '--dynamic-color': activeColor }}>
-            {/* Background Glow — blends agent color + emotion color */}
+            {/* Background Glow */}
             <div
                 className="absolute inset-0 transition-all duration-1000 opacity-20 pointer-events-none"
                 style={{ background: `radial-gradient(circle at center, var(--dynamic-color) 0%, transparent 70%)` }}
@@ -130,23 +129,23 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
 
             {isFaroMode && (
                 <div className="absolute top-0 w-full bg-[#E85D75] text-white py-2 px-4 shadow-lg text-center font-bold z-50 text-sm">
-                    MODO DE RIESGO VITAL ACTIVADO. Por favor, si estas en peligro inminente llama al *4141 en Chile o acude a urgencias.
+                    {t('session.crisisBanner')}
                 </div>
             )}
 
-            {/* ===== SIDE PANEL — Conversation History ===== */}
+            {/* ===== SIDE PANEL ===== */}
             <div className={`
                 z-30 flex flex-col border-r border-white/[0.06] bg-black/80 backdrop-blur-md shrink-0 transition-all duration-300
                 fixed md:relative inset-y-0 left-0
                 ${showSidePanel ? 'w-80 translate-x-0' : 'w-0 -translate-x-full md:w-80 md:translate-x-0'}
             `}>
                 <div className="p-4 border-b border-white/[0.06] flex items-center justify-between shrink-0">
-                    <h3 className="text-sm font-semibold text-gray-400">Historial</h3>
+                    <h3 className="text-sm font-semibold text-gray-400">{t('session.history')}</h3>
                     <button
                         onClick={() => setShowSidePanel(false)}
                         className="md:hidden text-gray-500 hover:text-gray-300 text-xs"
                     >
-                        Cerrar
+                        {t('session.close')}
                     </button>
                 </div>
                 <div
@@ -154,7 +153,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                     className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 scroll-smooth"
                 >
                     {messages.length === 0 && (
-                        <p className="text-gray-600 text-xs text-center mt-8">La conversación aparecerá aquí...</p>
+                        <p className="text-gray-600 text-xs text-center mt-8">{t('session.conversationWillAppear')}</p>
                     )}
                     {messages.map((m, i) => (
                         <div key={i} className={`flex w-full ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -173,7 +172,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                                 )}
                                 {m.sender === 'user' && (
                                     <span className="text-[10px] font-medium block mb-1 text-white/40">
-                                        Tú
+                                        {t('session.you')}
                                     </span>
                                 )}
                                 {maskPII(m.text)}
@@ -183,7 +182,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                 </div>
             </div>
 
-            {/* ===== CENTER — Avatar + Live Message ===== */}
+            {/* ===== CENTER ===== */}
             <div className="flex-1 flex flex-col items-center overflow-hidden relative">
 
                 {/* Header */}
@@ -196,21 +195,20 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                                 onMouseLeave={() => setActiveTooltip(null)}
                                 className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-full text-white backdrop-blur-md transition-colors text-sm font-medium mt-8 sm:mt-0"
                             >
-                                Salir de la sala
+                                {t('session.exitRoom')}
                             </button>
                             {activeTooltip === 'exit' && status === 'connected' && (
                                 <div className="absolute top-full mt-2 left-0 w-60 bg-gray-900/95 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2.5 text-[11px] text-gray-300 leading-relaxed shadow-xl z-50">
-                                    <span className="font-medium text-white block mb-0.5">Finalizar sesión</span>
-                                    También puedes decir: <span className="italic" style={{ color: activeColor }}>&quot;Terminemos la sesión&quot;</span> o <span className="italic" style={{ color: activeColor }}>&quot;Quiero volver a la sala&quot;</span>
+                                    <span className="font-medium text-white block mb-0.5">{t('session.endSessionTitle')}</span>
+                                    {t('session.endSessionHint')}
                                 </div>
                             )}
                         </div>
-                        {/* Mobile: toggle side panel */}
                         <button
                             onClick={() => setShowSidePanel(!showSidePanel)}
                             className="md:hidden bg-white/10 hover:bg-white/20 px-3 py-2 rounded-full text-white backdrop-blur-md transition-colors text-xs font-medium mt-8 sm:mt-0"
                         >
-                            Historial
+                            {t('session.history')}
                         </button>
                     </div>
                     <div className="flex items-center gap-2 mt-8 sm:mt-0 flex-wrap justify-end">
@@ -225,12 +223,12 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                                         className="flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-md transition-colors text-xs font-medium border bg-white/5 border-white/10 text-gray-400 hover:bg-white/10"
                                     >
                                         <span className="text-sm">📝</span>
-                                        Post
+                                        {t('session.post')}
                                     </button>
                                     {activeTooltip === 'post' && (
                                         <div className="absolute top-full mt-2 right-0 w-56 bg-gray-900/95 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2.5 text-[11px] text-gray-300 leading-relaxed shadow-xl z-50">
-                                            <span className="font-medium text-white block mb-0.5">Genera un post</span>
-                                            Intenta decir: <span className="italic" style={{ color: activeColor }}>&quot;Genérame un post para Facebook&quot;</span> o <span className="italic" style={{ color: activeColor }}>&quot;Ayúdame a escribir algo para Instagram&quot;</span>
+                                            <span className="font-medium text-white block mb-0.5">{t('session.postHintTitle')}</span>
+                                            {t('session.postHint')}
                                         </div>
                                     )}
                                 </div>
@@ -243,18 +241,20 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                                             className="flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-md transition-colors text-xs font-medium border bg-white/5 border-white/10 text-gray-400 hover:bg-white/10"
                                         >
                                             <span className="text-sm">🌬️</span>
-                                            Respirar
+                                            {t('session.breathe')}
                                         </button>
                                         {activeTooltip === 'breathing' && (
                                             <div className="absolute top-full mt-2 right-0 w-56 bg-gray-900/95 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2.5 text-[11px] text-gray-300 leading-relaxed shadow-xl z-50">
-                                                <span className="font-medium text-white block mb-0.5">Ejercicio de respiración</span>
-                                                Intenta decir: <span className="italic" style={{ color: activeColor }}>&quot;Hagamos un ejercicio de respiración&quot;</span> o <span className="italic" style={{ color: activeColor }}>&quot;Necesito relajarme&quot;</span>
+                                                <span className="font-medium text-white block mb-0.5">{t('session.breatheHintTitle')}</span>
+                                                {t('session.breatheHint')}
                                             </div>
                                         )}
                                     </div>
                                 )}
                             </>
                         )}
+                        {/* Language toggle */}
+                        <LanguageToggle />
                         {/* Camera toggle */}
                         <button
                             onClick={toggleCamera}
@@ -267,12 +267,19 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
                             </svg>
-                            {cameraEnabled ? 'Cam' : 'Cam'}
+                            {t('session.cam')}
                         </button>
-                        {/* Status indicator */}
+                        {/* Status indicator + latency */}
                         <div className="flex items-center gap-3 bg-white/5 px-4 py-2 rounded-full backdrop-blur-md border border-white/10">
                             <div className={`w-3 h-3 rounded-full ${status === 'connected' ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'}`} />
                             <span className="text-white text-sm font-medium capitalize">{status}</span>
+                            {latency !== null && status === 'connected' && (
+                                <span className={`text-[10px] font-mono ${
+                                    latency < 200 ? 'text-green-400' : latency < 500 ? 'text-yellow-400' : 'text-red-400'
+                                }`}>
+                                    {Math.round(latency)}ms
+                                </span>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -301,17 +308,17 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                     </h2>
                     <p className="text-gray-400 text-sm">
                         {status !== 'connected'
-                            ? 'Conectando...'
+                            ? t('session.connecting')
                             : isAiSpeaking
-                                ? <span style={{ color: activeColor }}>Hablando...</span>
+                                ? <span style={{ color: activeColor }}>{t('session.speaking')}</span>
                                 : isSpeaking
-                                    ? <span className="text-white">Te estoy escuchando...</span>
+                                    ? <span className="text-white">{t('session.listening')}</span>
                                     : isFaroMode
-                                        ? 'Estoy aquí contigo...'
-                                        : 'Esperando...'}
+                                        ? t('session.faroWaiting')
+                                        : t('session.waiting')}
                     </p>
 
-                    {/* Emotion badges — multi-source */}
+                    {/* Emotion badges */}
                     {emotion && !isFaroMode && (
                         <div className="mt-2 flex flex-wrap justify-center gap-1.5">
                             {emotion.text && (
@@ -324,7 +331,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                                     }}
                                 >
                                     <span className="opacity-50">💬</span>
-                                    {EMOTION_LABELS[emotion.text.emotion] || emotion.text.emotion}
+                                    {t(`emotions.${emotion.text.emotion}`) || emotion.text.emotion}
                                     <span className="ml-0.5 opacity-50">{'●'.repeat(Math.min(emotion.text.intensity, 5))}</span>
                                 </div>
                             )}
@@ -338,7 +345,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                                     }}
                                 >
                                     <span className="opacity-50">🎙️</span>
-                                    {EMOTION_LABELS[emotion.voice.emotion] || emotion.voice.emotion}
+                                    {t(`emotions.${emotion.voice.emotion}`) || emotion.voice.emotion}
                                     <span className="ml-0.5 opacity-50">{'●'.repeat(Math.min(emotion.voice.intensity, 5))}</span>
                                 </div>
                             )}
@@ -352,7 +359,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                                     }}
                                 >
                                     <span className="opacity-50">👁️</span>
-                                    {EMOTION_LABELS[emotion.facial.emotion] || emotion.facial.emotion}
+                                    {t(`emotions.${emotion.facial.emotion}`) || emotion.facial.emotion}
                                     <span className="ml-0.5 opacity-50">{'●'.repeat(Math.min(emotion.facial.intensity, 5))}</span>
                                 </div>
                             )}
@@ -377,7 +384,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                     </div>
                 )}
 
-                {/* Live message bubble — single growing message */}
+                {/* Live message bubble */}
                 <div className="z-10 w-full max-w-lg px-6 flex-1 min-h-0 flex flex-col items-center gap-3 mb-36 overflow-y-auto">
                     {currentMessage && (
                         <div className={`w-full flex ${currentMessage.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -396,7 +403,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                                 )}
                                 {currentMessage.sender === 'user' && (
                                     <span className="text-[11px] font-medium block mb-1 text-white/50">
-                                        Tú
+                                        {t('session.you')}
                                     </span>
                                 )}
                                 {maskPII(currentMessage.text)}
@@ -406,7 +413,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                     )}
                     {!currentMessage && messages.length === 0 && status === 'connected' && (
                         <p className="text-gray-600 text-xs mt-4">
-                            {isFaroMode ? 'Faro va a hablar contigo en un momento...' : 'Comienza a hablar...'}
+                            {isFaroMode ? t('session.faroPrompt') : t('session.startSpeaking')}
                         </p>
                     )}
                 </div>
@@ -430,7 +437,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                     {isSpeaking && status === 'connected' && (
                         <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md rounded-full px-4 py-1.5 border border-white/20">
                             <div className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
-                            <span className="text-white/80 text-xs font-medium">Mic activo</span>
+                            <span className="text-white/80 text-xs font-medium">{t('session.micActive')}</span>
                         </div>
                     )}
                     {status === 'connected' && (
@@ -471,6 +478,9 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                     </div>
                 </div>
             )}
+
+            {/* Onboarding overlay (first visit only) */}
+            {status === 'connected' && <OnboardingOverlay />}
         </div>
     );
 }

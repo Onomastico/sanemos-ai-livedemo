@@ -1,16 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-
-const PHASE_LABELS = {
-    inhale: 'Inhala...',
-    hold: 'Sostén...',
-    exhale: 'Exhala...',
-    rest: 'Descansa...',
-    done: 'Ejercicio completo'
-};
+import { useI18n } from '@/i18n/I18nContext';
 
 export default function BreathingVisualizer({ exercise, agentColor, onComplete }) {
+    const { t } = useI18n();
     const [phase, setPhase] = useState('inhale');
     const [currentCycle, setCurrentCycle] = useState(1);
     const [scale, setScale] = useState(0.4);
@@ -18,47 +12,48 @@ export default function BreathingVisualizer({ exercise, agentColor, onComplete }
     const timerRef = useRef(null);
     const cycleRef = useRef(1);
 
+    const PHASE_LABELS = {
+        inhale: t('breathing.inhale'),
+        hold: t('breathing.hold'),
+        exhale: t('breathing.exhale'),
+        rest: t('breathing.rest'),
+        done: t('breathing.done')
+    };
+
     useEffect(() => {
         if (!exercise) return;
 
         const { inhale_seconds, hold_seconds, exhale_seconds, cycles } = exercise;
-        const rest_seconds = 2; // Brief rest between cycles
+        const rest_seconds = 2;
         cycleRef.current = 1;
         setCurrentCycle(1);
         setDone(false);
 
         const runCycle = () => {
-            // Inhale phase
             setPhase('inhale');
             setScale(1);
 
             timerRef.current = setTimeout(() => {
-                // Hold phase (skip if 0)
                 if (hold_seconds > 0) {
                     setPhase('hold');
                     timerRef.current = setTimeout(() => {
-                        // Exhale phase
                         setPhase('exhale');
                         setScale(0.4);
                         timerRef.current = setTimeout(() => {
-                            // Cycle complete
                             cycleRef.current++;
                             if (cycleRef.current <= cycles) {
-                                // Rest between cycles
                                 setPhase('rest');
                                 setCurrentCycle(cycleRef.current);
                                 timerRef.current = setTimeout(() => {
                                     runCycle();
                                 }, rest_seconds * 1000);
                             } else {
-                                // All cycles done — show completed state, don't auto-dismiss
                                 setPhase('done');
                                 setDone(true);
                             }
                         }, exhale_seconds * 1000);
                     }, hold_seconds * 1000);
                 } else {
-                    // No hold — go straight to exhale
                     setPhase('exhale');
                     setScale(0.4);
                     timerRef.current = setTimeout(() => {
@@ -78,7 +73,6 @@ export default function BreathingVisualizer({ exercise, agentColor, onComplete }
             }, inhale_seconds * 1000);
         };
 
-        // Start first cycle after a brief pause
         setScale(0.4);
         setPhase('inhale');
         timerRef.current = setTimeout(() => runCycle(), 500);
@@ -101,7 +95,6 @@ export default function BreathingVisualizer({ exercise, agentColor, onComplete }
         <div className="flex flex-col items-center gap-4 py-4">
             {/* Breathing circle */}
             <div className="relative flex items-center justify-center w-48 h-48">
-                {/* Outer glow ring */}
                 <div
                     className="absolute inset-0 rounded-full opacity-20"
                     style={{
@@ -111,7 +104,6 @@ export default function BreathingVisualizer({ exercise, agentColor, onComplete }
                         filter: 'blur(20px)'
                     }}
                 />
-                {/* Main circle */}
                 <div
                     className="absolute inset-4 rounded-full border-2 flex items-center justify-center"
                     style={{
@@ -134,7 +126,7 @@ export default function BreathingVisualizer({ exercise, agentColor, onComplete }
                                 className="mt-2 text-[10px] px-3 py-1 rounded-full border transition-colors"
                                 style={{ borderColor: agentColor + '60', color: agentColor }}
                             >
-                                Cerrar
+                                {t('breathing.close')}
                             </button>
                         )}
                     </div>
@@ -144,7 +136,7 @@ export default function BreathingVisualizer({ exercise, agentColor, onComplete }
             {/* Cycle counter */}
             <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-500">
-                    {done ? 'Completado' : `Ciclo ${currentCycle} de ${cycles}`}
+                    {done ? t('breathing.completed') : t('breathing.cycleOf', { current: currentCycle, total: cycles })}
                 </span>
                 <div className="flex gap-1">
                     {[...Array(cycles)].map((_, i) => (
@@ -161,7 +153,7 @@ export default function BreathingVisualizer({ exercise, agentColor, onComplete }
 
             {/* Exercise type label */}
             <span className="text-[10px] text-gray-600 uppercase tracking-wider">
-                {exercise.type === 'box' ? 'Respiración cuadrada' : exercise.type === '478' ? 'Técnica 4-7-8' : 'Respiración simple'}
+                {exercise.type === 'box' ? t('breathing.boxBreathing') : exercise.type === '478' ? t('breathing.technique478') : t('breathing.simpleBreathing')}
             </span>
         </div>
     );

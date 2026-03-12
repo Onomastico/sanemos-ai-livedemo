@@ -5,8 +5,11 @@ import { getAllAgents } from '@/lib/agents';
 import { USER_CONTEXTS, detectCountry } from '@/lib/userContexts';
 import Image from 'next/image';
 import GeminiLiveSession from '@/components/GeminiLiveSession';
+import { I18nProvider, useI18n } from '@/i18n/I18nContext';
+import LanguageToggle from '@/components/LanguageToggle';
 
-export default function Home() {
+function HomeContent() {
+  const { t } = useI18n();
   const agents = getAllAgents();
   const [apiKey, setApiKey] = useState(process.env.NEXT_PUBLIC_GEMINI_API_KEY || '');
   const [selectedAgent, setSelectedAgent] = useState(null);
@@ -20,7 +23,6 @@ export default function Home() {
 
   useEffect(() => {
     detectCountry().then(setDetectedCountry);
-    // Check if already authorized this session
     if (!requiredCode || sessionStorage.getItem('sanemos_authorized') === 'true') {
       setIsAuthorized(true);
     }
@@ -55,17 +57,18 @@ export default function Home() {
       <main className="min-h-screen bg-black flex flex-col items-center justify-center p-6 relative overflow-hidden">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-900/10 blur-[120px] rounded-full pointer-events-none" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-[#7B8FD4]/10 blur-[150px] rounded-full pointer-events-none" />
+        <LanguageToggle className="absolute top-6 right-6 z-20" />
         <div className="z-10 text-center max-w-md">
           <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4 bg-gradient-to-r from-[#9CCF6A] to-[#5FB7A6] text-transparent bg-clip-text">
             Sanemos AI <span className="text-white">Live</span>
           </h1>
           <p className="text-gray-400 mb-8 text-sm">
-            Esta demo requiere un código de acceso.
+            {t('page.accessCodeRequired')}
           </p>
           <form onSubmit={handleAccessSubmit} className="flex flex-col items-center gap-4">
             <input
               type="password"
-              placeholder="Código de acceso..."
+              placeholder={t('page.accessCodePlaceholder')}
               className={`w-full bg-black/40 border rounded-full px-6 py-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#9CCF6A] transition-all ${
                 accessError ? 'border-red-500/60' : 'border-white/10'
               }`}
@@ -74,17 +77,17 @@ export default function Home() {
               autoFocus
             />
             {accessError && (
-              <p className="text-red-400 text-xs">Código incorrecto. Intenta de nuevo.</p>
+              <p className="text-red-400 text-xs">{t('page.accessCodeError')}</p>
             )}
             <button
               type="submit"
               className="px-8 py-3 rounded-full bg-gradient-to-r from-[#9CCF6A] to-[#5FB7A6] text-black font-semibold text-sm hover:opacity-90 transition-opacity"
             >
-              Entrar
+              {t('page.enter')}
             </button>
           </form>
           <p className="text-gray-600 text-xs mt-6">
-            Demo for Google Gemini Live Agent Challenge
+            {t('page.footer')}
           </p>
         </div>
       </main>
@@ -98,26 +101,28 @@ export default function Home() {
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-900/10 blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-[#7B8FD4]/10 blur-[150px] rounded-full pointer-events-none" />
 
+      <LanguageToggle className="absolute top-6 right-6 z-20" />
+
       <header className="text-center mb-16 z-10 w-full">
         <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight mb-4 bg-gradient-to-r from-[#9CCF6A] to-[#5FB7A6] text-transparent bg-clip-text">
           Sanemos AI <span className="text-white">Live</span>
         </h1>
         <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto font-medium mb-8">
-          Habla directamente con nuestros agentes de apoyo emocional propulsados por la nueva Gemini Multimodal Live API. Experimenta latencia ultrabaja y detección de crisis en tiempo real.
+          {t('page.tagline')}
         </p>
 
         {!process.env.NEXT_PUBLIC_GEMINI_API_KEY && (
           <div className="max-w-md mx-auto relative group">
             <input
               type="password"
-              placeholder="Pega tu Google Gemini API Key aquí..."
+              placeholder={t('page.apiKeyPlaceholder')}
               className="w-full bg-black/40 border border-white/10 rounded-full px-6 py-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#9CCF6A] transition-all"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
             />
             <p className="text-xs text-gray-500 mt-3 flex items-center justify-center gap-2">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M12 16V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><path d="M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              La llave solo se usa en tu navegador (Client-side WebSocket).
+              {t('page.apiKeyNote')}
             </p>
           </div>
         )}
@@ -126,8 +131,8 @@ export default function Home() {
       {/* Context Selection */}
       <section className="w-full max-w-6xl z-10 mb-10">
         <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4 text-center">
-          Selecciona un perfil de usuario para la demo
-          {detectedCountry && <span className="text-gray-600 normal-case tracking-normal font-normal"> — País detectado: {detectedCountry}</span>}
+          {t('page.selectProfile')}
+          {detectedCountry && <span className="text-gray-600 normal-case tracking-normal font-normal"> — {t('page.detectedCountry', { country: detectedCountry })}</span>}
         </h2>
         <div className="flex flex-wrap justify-center gap-3">
           {USER_CONTEXTS.map((ctx) => (
@@ -143,16 +148,16 @@ export default function Home() {
               <span className="text-xl">{ctx.emoji}</span>
               <div className="flex flex-col">
                 <span className={`text-sm font-medium ${selectedContext.id === ctx.id ? 'text-white' : 'text-gray-300'}`}>
-                  {ctx.name}
+                  {t(`contexts.${ctx.id}.name`)}
                 </span>
-                <span className="text-xs text-gray-500">{ctx.summary}</span>
+                <span className="text-xs text-gray-500">{t(`contexts.${ctx.id}.summary`)}</span>
               </div>
             </button>
           ))}
         </div>
         {selectedContext.detail && (
           <p className="text-xs text-gray-500 text-center mt-3 max-w-2xl mx-auto italic">
-            &quot;{selectedContext.detail}&quot;
+            &quot;{t(`contexts.${selectedContext.id}.detail`)}&quot;
           </p>
         )}
       </section>
@@ -163,7 +168,7 @@ export default function Home() {
             key={agent.id}
             onClick={() => {
               if (!apiKey) {
-                alert('Por favor ingresa tu API Key primero para probar la demo.');
+                alert(t('page.apiKeyAlert'));
                 return;
               }
               setSelectedAgent(agent);
@@ -208,7 +213,7 @@ export default function Home() {
             <div className="pt-4 px-6 pb-2 flex flex-col gap-1">
               <h3 className="font-bold text-xl text-white m-0">{agent.name}</h3>
               <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: agent.color }}>
-                {agent.focus}
+                {t(`agents.${agent.id}.focus`)}
               </span>
             </div>
 
@@ -218,19 +223,19 @@ export default function Home() {
                 className="mx-6 mb-2 text-sm italic text-gray-400 leading-relaxed py-2 px-3 rounded-r bg-white/5 border-l-2"
                 style={{ borderLeftColor: agent.color }}
               >
-                {agent.quote}
+                {t(`agents.${agent.id}.quote`)}
               </p>
             )}
 
             {/* Description */}
             <p className="mx-6 mb-4 text-sm text-gray-400 leading-[1.65] grow">
-              {agent.description}
+              {t(`agents.${agent.id}.description`)}
             </p>
 
             {/* Traits */}
             {agent.traits && (
               <div className="flex flex-wrap gap-2 px-6 mb-4">
-                {agent.traits.map(trait => (
+                {t(`agents.${agent.id}.traits`).split(',').map(trait => (
                   <span
                     key={trait}
                     className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-medium border"
@@ -250,13 +255,13 @@ export default function Home() {
             <div className="flex items-center justify-between p-3 px-6 border-t border-white/10 mt-auto">
               {agent.userCount !== undefined ? (
                 <span className="text-xs font-medium text-gray-500">
-                  👥 {agent.userCount} acompañadas
+                  {agent.userCount} {t('page.accompanied')}
                 </span>
               ) : (
                 <span />
               )}
               <span className="text-sm font-semibold transition-all group-hover:tracking-wide" style={{ color: agent.color }}>
-                Hablar →
+                {t('page.talk')} →
               </span>
             </div>
 
@@ -269,9 +274,20 @@ export default function Home() {
         ))}
       </div>
 
-      <footer className="mt-16 text-sm text-gray-500 z-10 font-medium">
-        Demo for Google Gemini Live Agent Challenge • sanemos.ai
+      <footer className="mt-16 text-sm text-gray-500 z-10 font-medium flex items-center gap-4">
+        <span>{t('page.footer')}</span>
+        <a href="/architecture" className="text-gray-500 hover:text-gray-300 underline underline-offset-2 transition-colors">
+          {t('page.viewArchitecture')}
+        </a>
       </footer>
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <I18nProvider>
+      <HomeContent />
+    </I18nProvider>
   );
 }
