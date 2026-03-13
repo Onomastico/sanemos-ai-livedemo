@@ -7,6 +7,8 @@ import Image from 'next/image';
 import GeminiLiveSession from '@/components/GeminiLiveSession';
 import { I18nProvider, useI18n } from '@/i18n/I18nContext';
 import LanguageToggle from '@/components/LanguageToggle';
+import SettingsPanel, { loadSettings } from '@/components/SettingsPanel';
+import OnboardingOverlay from '@/components/OnboardingOverlay';
 
 function HomeContent() {
   const { t } = useI18n();
@@ -18,14 +20,23 @@ function HomeContent() {
   const [accessCode, setAccessCode] = useState('');
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [accessError, setAccessError] = useState(false);
+  const [geminiSettings, setGeminiSettings] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const requiredCode = process.env.NEXT_PUBLIC_ACCESS_CODE;
 
   useEffect(() => {
     detectCountry().then(setDetectedCountry);
+    setGeminiSettings(loadSettings());
     if (!requiredCode || sessionStorage.getItem('sanemos_authorized') === 'true') {
       setIsAuthorized(true);
     }
+    try {
+      if (!localStorage.getItem('sanemos_onboarding_done')) {
+        setShowOnboarding(true);
+      }
+    } catch {}
   }, []);
 
   const handleAccessSubmit = (e) => {
@@ -46,6 +57,7 @@ function HomeContent() {
         apiKey={apiKey}
         userContext={selectedContext}
         userCountry={detectedCountry}
+        geminiSettings={geminiSettings}
         onClose={() => setSelectedAgent(null)}
       />
     );
@@ -101,7 +113,29 @@ function HomeContent() {
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-900/10 blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-[#7B8FD4]/10 blur-[150px] rounded-full pointer-events-none" />
 
-      <LanguageToggle className="absolute top-6 right-6 z-20" />
+      <div className="absolute top-6 right-6 z-20 flex items-center gap-2">
+        <button
+          onClick={() => setShowOnboarding(true)}
+          className="p-2 rounded-full backdrop-blur-md border bg-white/5 border-white/10 text-gray-400 hover:bg-white/10 transition-colors"
+          title="Tour"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </button>
+        <button
+          onClick={() => setShowSettings(!showSettings)}
+          className={`p-2 rounded-full backdrop-blur-md border transition-colors ${
+            showSettings ? 'bg-white/15 border-white/20 text-white' : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
+          }`}
+          title={t('settings.title')}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+          </svg>
+        </button>
+        <LanguageToggle />
+      </div>
 
       <header className="text-center mb-16 z-10 w-full">
         <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight mb-4 bg-gradient-to-r from-[#9CCF6A] to-[#5FB7A6] text-transparent bg-clip-text">
@@ -127,6 +161,13 @@ function HomeContent() {
           </div>
         )}
       </header>
+
+      {/* Settings Panel */}
+      {showSettings && geminiSettings && (
+        <div className="w-full max-w-6xl z-10 mb-8">
+          <SettingsPanel settings={geminiSettings} onChange={setGeminiSettings} />
+        </div>
+      )}
 
       {/* Context Selection */}
       <section className="w-full max-w-6xl z-10 mb-10">
@@ -280,6 +321,13 @@ function HomeContent() {
           {t('page.viewArchitecture')}
         </a>
       </footer>
+
+      {showOnboarding && (
+        <OnboardingOverlay onClose={() => {
+          setShowOnboarding(false);
+          try { localStorage.setItem('sanemos_onboarding_done', '1'); } catch {}
+        }} />
+      )}
     </main>
   );
 }

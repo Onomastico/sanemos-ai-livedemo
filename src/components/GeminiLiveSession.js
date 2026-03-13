@@ -9,7 +9,6 @@ import BreathingVisualizer from './BreathingVisualizer';
 import SessionSummary from './SessionSummary';
 import SocialPostModal from './SocialPostModal';
 import LanguageToggle from './LanguageToggle';
-import OnboardingOverlay from './OnboardingOverlay';
 
 const EMOTION_COLORS = {
     sadness: '#4A90D9', anger: '#D94A4A', fear: '#9B59B6',
@@ -17,8 +16,8 @@ const EMOTION_COLORS = {
     love: '#E91E8F', numbness: '#636E72'
 };
 
-export default function GeminiLiveSession({ agent: initialAgent, apiKey, userContext, userCountry, onClose }) {
-    const { t } = useI18n();
+export default function GeminiLiveSession({ agent: initialAgent, apiKey, userContext, userCountry, geminiSettings, onClose }) {
+    const { t, locale } = useI18n();
     const [isFaroMode, setIsFaroMode] = useState(false);
     const [showSidePanel, setShowSidePanel] = useState(false);
     const [showSummary, setShowSummary] = useState(false);
@@ -41,6 +40,9 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
         switchAgent(newAgent, t('session.switchContext', { name: newAgent.name }));
     };
 
+    // Use i18n-translated context detail so the system prompt matches the selected language
+    const translatedContext = userContext?.id ? { ...userContext, detail: t(`contexts.${userContext.id}.detail`) } : userContext;
+
     const {
         status, agent, messages, currentMessage, error,
         isSpeaking, isAiSpeaking, emotion, breathingExercise, setBreathingExercise,
@@ -48,7 +50,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
         socialPost, setSocialPost, uiToast,
         latency, emotionHistory,
         switchAgent, connect, disconnect
-    } = useGeminiLive(apiKey, initialAgent, handleEscalateToFaro, () => handleExitRef.current?.(), handleSwitchAgent, userContext, userCountry);
+    } = useGeminiLive(apiKey, initialAgent, handleEscalateToFaro, () => handleExitRef.current?.(), handleSwitchAgent, translatedContext, userCountry, geminiSettings, locale);
 
     useEffect(() => {
         connect();
@@ -479,8 +481,6 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                 </div>
             )}
 
-            {/* Onboarding overlay (first visit only) */}
-            {status === 'connected' && <OnboardingOverlay />}
         </div>
     );
 }

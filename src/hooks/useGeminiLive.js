@@ -3,13 +3,18 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 
 const GEMINI_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 
-function buildSystemPrompt(basePrompt, userContext, userCountry) {
-    if (!userContext?.detail) return basePrompt;
-    const country = userCountry || userContext.country || 'desconocido';
-    return `CONTEXTO DEL USUARIO CON QUIEN ESTÁS HABLANDO: ${userContext.detail}\nPaís del usuario: ${country}.\nAdapta tu respuesta al contexto cultural y emocional de esta persona.\n\n${basePrompt}`;
+function buildSystemPrompt(basePrompt, userContext, userCountry, locale) {
+    const lang = locale === 'es' ? 'Spanish' : 'English';
+    const langInstruction = `LANGUAGE INSTRUCTION: You MUST respond in ${lang}. This is non-negotiable — always speak and respond in ${lang} regardless of the language of the context below.\n\n`;
+
+    if (!userContext?.detail) return langInstruction + basePrompt;
+    const country = userCountry || userContext.country || 'Unknown';
+    return `${langInstruction}USER CONTEXT: ${userContext.detail}\nUser country: ${country}.\nAdapt your response to this person's cultural and emotional context.\n\n${basePrompt}`;
 }
 
-function buildFunctionDeclarations(agentId) {
+function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
+    const emotionEnum = ["sadness", "anger", "fear", "guilt", "hope", "calm", "love", "numbness"];
+
     const declarations = [
         {
             name: "escalate_to_crisis_faro",
@@ -33,62 +38,46 @@ function buildFunctionDeclarations(agentId) {
                 },
                 required: ["agent_id"]
             }
-        },
-        {
-            name: "report_text_emotion",
-            description: "Report the primary emotion detected from the CONTENT/MEANING of the user's words. Call silently after each user turn. Never mention this tool to the user.",
-            parameters: {
-                type: "OBJECT",
-                properties: {
-                    emotion: {
-                        type: "STRING",
-                        enum: ["sadness", "anger", "fear", "guilt", "hope", "calm", "love", "numbness"]
-                    },
-                    intensity: {
-                        type: "INTEGER",
-                        description: "Intensity from 1 (mild) to 5 (overwhelming)"
-                    }
-                },
-                required: ["emotion", "intensity"]
-            }
-        },
-        {
-            name: "report_voice_emotion",
-            description: "Report the emotion detected from the user's TONE OF VOICE (not words). Analyze vocal qualities: trembling, flat, rushed, warm, tense, breaking. Call silently after each user turn. Never mention this tool.",
-            parameters: {
-                type: "OBJECT",
-                properties: {
-                    emotion: {
-                        type: "STRING",
-                        enum: ["sadness", "anger", "fear", "guilt", "hope", "calm", "love", "numbness"]
-                    },
-                    intensity: {
-                        type: "INTEGER",
-                        description: "Intensity from 1 (mild) to 5 (overwhelming)"
-                    }
-                },
-                required: ["emotion", "intensity"]
-            }
-        },
-        {
-            name: "report_facial_emotion",
-            description: "Report the emotion detected from the user's FACIAL EXPRESSION in the video feed. Analyze: eyes, mouth, brow tension, tears, smile. Only call when camera is active and face is visible. Call silently. Never mention this tool.",
-            parameters: {
-                type: "OBJECT",
-                properties: {
-                    emotion: {
-                        type: "STRING",
-                        enum: ["sadness", "anger", "fear", "guilt", "hope", "calm", "love", "numbness"]
-                    },
-                    intensity: {
-                        type: "INTEGER",
-                        description: "Intensity from 1 (mild) to 5 (overwhelming)"
-                    }
-                },
-                required: ["emotion", "intensity"]
-            }
         }
     ];
+
+    // Emotion tools — unified (1 call/turn) or separate (3 calls/turn)
+    if (emotionToolMode === 'unified') {
+        declarations.push({
+            name: "report_emotions",
+            description: "Report detected emotions from text content, voice tone, and optionally facial expression. Call once silently after each user turn. Never mention this tool.",
+            parameters: {
+                type: "OBJECT",
+                properties: {
+                    text_emotion: { type: "STRING", enum: emotionEnum, description: "Emotion from word content/meaning" },
+                    text_intensity: { type: "INTEGER", description: "Intensity 1 (mild) to 5 (overwhelming)" },
+                    voice_emotion: { type: "STRING", enum: emotionEnum, description: "Emotion from tone of voice" },
+                    voice_intensity: { type: "INTEGER", description: "Intensity 1 (mild) to 5 (overwhelming)" },
+                    facial_emotion: { type: "STRING", enum: emotionEnum, description: "Emotion from facial expression (only if camera active)" },
+                    facial_intensity: { type: "INTEGER", description: "Intensity 1 (mild) to 5 (overwhelming)" }
+                },
+                required: ["text_emotion", "text_intensity", "voice_emotion", "voice_intensity"]
+            }
+        });
+    } else {
+        declarations.push(
+            {
+                name: "report_text_emotion",
+                description: "Report the primary emotion detected from the CONTENT/MEANING of the user's words. Call silently after each user turn. Never mention this tool to the user.",
+                parameters: { type: "OBJECT", properties: { emotion: { type: "STRING", enum: emotionEnum }, intensity: { type: "INTEGER", description: "Intensity from 1 (mild) to 5 (overwhelming)" } }, required: ["emotion", "intensity"] }
+            },
+            {
+                name: "report_voice_emotion",
+                description: "Report the emotion detected from the user's TONE OF VOICE. Call silently after each user turn. Never mention this tool.",
+                parameters: { type: "OBJECT", properties: { emotion: { type: "STRING", enum: emotionEnum }, intensity: { type: "INTEGER", description: "Intensity from 1 (mild) to 5 (overwhelming)" } }, required: ["emotion", "intensity"] }
+            },
+            {
+                name: "report_facial_emotion",
+                description: "Report the emotion detected from the user's FACIAL EXPRESSION. Only call when camera is active. Call silently. Never mention this tool.",
+                parameters: { type: "OBJECT", properties: { emotion: { type: "STRING", enum: emotionEnum }, intensity: { type: "INTEGER", description: "Intensity from 1 (mild) to 5 (overwhelming)" } }, required: ["emotion", "intensity"] }
+            }
+        );
+    }
 
     // UI tools — available to all agents except Faro
     if (agentId !== 'faro') {
@@ -162,7 +151,7 @@ function buildFunctionDeclarations(agentId) {
     return declarations;
 }
 
-export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSession, onSwitchAgent, userContext, userCountry) {
+export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSession, onSwitchAgent, userContext, userCountry, settings, locale) {
     const [status, setStatus] = useState('disconnected'); // disconnected, connecting, connected
     const [agent, setAgent] = useState(initialAgent);
     const [messages, setMessages] = useState([]);         // completed full messages
@@ -206,6 +195,10 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
     userContextRef.current = userContext;
     const userCountryRef = useRef(userCountry);
     userCountryRef.current = userCountry;
+    const settingsRef = useRef(settings);
+    settingsRef.current = settings;
+    const localeRef = useRef(locale);
+    localeRef.current = locale;
 
     const turnCompleteTimerRef = useRef(null);
 
@@ -276,31 +269,42 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                 setStatus('connected');
                 // Gemini Multimodal Live API requires an initial "setup" message 
                 // to configure the model, system prompt, and tools.
-                const setupMessage = {
-                    setup: {
-                        model: "models/gemini-2.5-flash-native-audio-preview-12-2025",
-                        generationConfig: {
-                            responseModalities: ["AUDIO"],
-                            speechConfig: {
-                                voiceConfig: {
-                                    prebuiltVoiceConfig: {
-                                        voiceName: agent.voiceName || 'Aoede'
-                                    }
-                                }
+                const s = settingsRef.current || {};
+                const genConfig = {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: {
+                        voiceConfig: {
+                            prebuiltVoiceConfig: {
+                                voiceName: agent.voiceName || 'Aoede'
                             }
-                        },
-                        systemInstruction: {
-                            parts: [{ text: buildSystemPrompt(agent.systemPrompt, userContextRef.current, userCountryRef.current) }]
-                        },
-                        tools: [
-                            {
-                                functionDeclarations: buildFunctionDeclarations(agent.id)
-                            }
-                        ],
-                        inputAudioTranscription: {},
-                        outputAudioTranscription: {}
+                        }
                     }
                 };
+                // Apply tuning parameters from settings
+                if (s.temperature !== undefined) genConfig.temperature = s.temperature;
+                if (s.topK !== undefined) genConfig.topK = s.topK;
+                if (s.topP !== undefined) genConfig.topP = s.topP;
+                if (s.thinkingBudget !== undefined) genConfig.thinkingConfig = { thinkingBudget: s.thinkingBudget };
+
+                const setupPayload = {
+                    model: "models/gemini-2.5-flash-native-audio-preview-12-2025",
+                    generationConfig: genConfig,
+                    systemInstruction: {
+                        parts: [{ text: buildSystemPrompt(agent.systemPrompt, userContextRef.current, userCountryRef.current, localeRef.current) }]
+                    },
+                    tools: [
+                        {
+                            functionDeclarations: buildFunctionDeclarations(agent.id, s.emotionToolMode || 'unified')
+                        }
+                    ]
+                };
+                // Transcription — conditional based on settings
+                if (s.transcription !== false) {
+                    setupPayload.inputAudioTranscription = {};
+                    setupPayload.outputAudioTranscription = {};
+                }
+
+                const setupMessage = { setup: setupPayload };
                 ws.send(JSON.stringify(setupMessage));
                 // Small delay to ensure setup is acknowledged before blasting audio
                 setTimeout(() => {
@@ -398,6 +402,29 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                                 }, 1500);
                                 return; // Don't send toolResponse — WS will be torn down for switch
                             }
+                            // Unified emotion tool (1 call per turn)
+                            if (call.name === 'report_emotions') {
+                                const args = call.args || {};
+                                const now = Date.now();
+                                const newEmotion = {};
+                                if (args.text_emotion) {
+                                    const e = { emotion: args.text_emotion, intensity: args.text_intensity || 3 };
+                                    newEmotion.text = e;
+                                    setEmotionHistory(prev => [...prev, { timestamp: now, source: 'text', ...e }]);
+                                }
+                                if (args.voice_emotion) {
+                                    const e = { emotion: args.voice_emotion, intensity: args.voice_intensity || 3 };
+                                    newEmotion.voice = e;
+                                    setEmotionHistory(prev => [...prev, { timestamp: now, source: 'voice', ...e }]);
+                                }
+                                if (args.facial_emotion) {
+                                    const e = { emotion: args.facial_emotion, intensity: args.facial_intensity || 3 };
+                                    newEmotion.facial = e;
+                                    setEmotionHistory(prev => [...prev, { timestamp: now, source: 'facial', ...e }]);
+                                }
+                                setEmotion(prev => ({ ...prev, ...newEmotion }));
+                            }
+                            // Separate emotion tools (3 calls per turn — legacy mode)
                             if (call.name === 'report_text_emotion') {
                                 const args = call.args || {};
                                 const entry = { emotion: args.emotion, intensity: args.intensity || 3 };
@@ -551,7 +578,8 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
             audioInputRef.current = source;
 
             // Deprecated but works seamlessly without bundling a worklet blob URL in Next.js
-            const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+            const bufSize = settingsRef.current?.audioBufferSize || 2048;
+            const processor = audioCtx.createScriptProcessor(bufSize, 1, 1);
             processorRef.current = processor;
 
             processor.onaudioprocess = (e) => {
@@ -575,13 +603,13 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                         pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
                     }
 
-                    // Convert to Base64 safely without call stack limits
-                    let binary = '';
+                    // Convert to Base64 safely with chunked approach
                     const bytes = new Uint8Array(pcm16.buffer);
-                    for (let i = 0; i < bytes.byteLength; i++) {
-                        binary += String.fromCharCode(bytes[i]);
+                    const chunks = [];
+                    for (let i = 0; i < bytes.length; i += 8192) {
+                        chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + 8192)));
                     }
-                    const base64Audio = btoa(binary);
+                    const base64Audio = btoa(chunks.join(''));
 
                     lastAudioSentRef.current = performance.now();
                     wsRef.current.send(JSON.stringify({
@@ -712,11 +740,13 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                 video.play();
             });
 
+            const vidInterval = settingsRef.current?.videoInterval || 2000;
+            const vidQuality = settingsRef.current?.videoQuality || 0.4;
             frameIntervalRef.current = setInterval(() => {
                 try {
                     if (wsRef.current?.readyState === WebSocket.OPEN && video.readyState >= 2) {
                         ctx.drawImage(video, 0, 0, 320, 240);
-                        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+                        const dataUrl = canvas.toDataURL('image/jpeg', vidQuality);
                         const base64Data = dataUrl.split(',')[1];
                         if (base64Data) {
                             wsRef.current.send(JSON.stringify({
@@ -727,7 +757,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                 } catch (e) {
                     console.warn("Frame capture error:", e);
                 }
-            }, 1000);
+            }, vidInterval);
         } catch (err) {
             console.error("Camera access failed:", err);
             setError("Camera access denied or failed.");

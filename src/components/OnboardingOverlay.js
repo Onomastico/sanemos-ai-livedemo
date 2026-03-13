@@ -1,48 +1,33 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useI18n } from '@/i18n/I18nContext';
 
 const STEPS = [
-    { key: 1, emoji: '🤖', spotlight: 'avatar' },
-    { key: 2, emoji: '🎙️', spotlight: 'visualizer' },
-    { key: 3, emoji: '💬', spotlight: 'emotions' },
-    { key: 4, emoji: '📷', spotlight: 'camera' },
+    { key: 2, emoji: '👤' },
+    { key: 1, emoji: '🤖' },
+    { key: 3, emoji: '🎙️' },
+    { key: 4, emoji: '💬' },
+    { key: 5, emoji: '⚙️' },
 ];
 
-export default function OnboardingOverlay({ onDone }) {
+export default function OnboardingOverlay({ onClose }) {
     const { t } = useI18n();
     const [step, setStep] = useState(0);
-    const [visible, setVisible] = useState(false);
-
-    useEffect(() => {
-        try {
-            if (localStorage.getItem('sanemos_onboarding_done')) return;
-        } catch {}
-        setVisible(true);
-    }, []);
 
     const handleNext = () => {
         if (step < STEPS.length - 1) {
             setStep(step + 1);
         } else {
-            finish();
+            onClose();
         }
     };
-
-    const finish = () => {
-        try { localStorage.setItem('sanemos_onboarding_done', '1'); } catch {}
-        setVisible(false);
-        if (onDone) onDone();
-    };
-
-    if (!visible) return null;
 
     const current = STEPS[step];
     const isLast = step === STEPS.length - 1;
 
     return (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center" onClick={finish}>
+        <div className="fixed inset-0 z-[80] flex items-center justify-center" onClick={onClose}>
             {/* Backdrop */}
             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
 
@@ -80,7 +65,7 @@ export default function OnboardingOverlay({ onDone }) {
                 {/* Actions */}
                 <div className="px-6 pb-6 flex gap-3">
                     <button
-                        onClick={finish}
+                        onClick={onClose}
                         className="flex-1 py-2.5 rounded-full text-sm font-medium text-gray-500 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
                     >
                         {t('onboarding.skip')}

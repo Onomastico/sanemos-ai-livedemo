@@ -6,7 +6,9 @@ import { useI18n } from '@/i18n/I18nContext';
 const EMOTION_COLORS = {
   sadness: '#4A90D9', anger: '#D94A4A', fear: '#9B59B6',
   guilt: '#7F8C8D', hope: '#2ECC71', calm: '#1ABC9C',
-  love: '#E91E8F', numbness: '#636E72',
+  love: '#E91E8F', numbness: '#636E72', concentration: '#F39C12',
+  surprise: '#E67E22', joy: '#F1C40F', anxiety: '#C0392B',
+  confusion: '#BDC3C7', gratitude: '#27AE60',
 };
 
 const SOURCE_ICONS = { text: '\uD83D\uDCAC', voice: '\uD83C\uDF99\uFE0F', facial: '\uD83D\uDC41\uFE0F' };
@@ -114,7 +116,7 @@ export default function EmotionTimeline({ emotionHistory = [], agentColor = '#88
         {emotions.map((em) => (
           <span key={em} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.7rem', color: '#aaa' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: EMOTION_COLORS[em] || '#888', display: 'inline-block' }} />
-            {t(`emotions.${em}`) || em}
+            {(() => { const v = t(`emotions.${em}`); return (!v || v === `emotions.${em}`) ? em.charAt(0).toUpperCase() + em.slice(1) : v; })()}
           </span>
         ))}
       </div>
