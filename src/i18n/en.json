@@ -198,5 +198,42 @@
   "settings.samples": "samples",
   "settings.resetDemo": "Reset demo",
   "settings.resetDemoHint": "Clears onboarding, so the guided tour shows again on next session.",
-  "settings.resetDemoDone": "Done! The onboarding will show on next session."
+  "settings.resetDemoDone": "Done! The onboarding will show on next session.",
+
+  "page.startSession": "👋 Start",
+  "page.diary": "Diary",
+
+  "agents.sofia.description": "Your warm receptionist who guides you to the perfect agent for your needs today.",
+  "agents.sofia.focus": "WELCOME & ROUTING",
+  "agents.sofia.quote": "\"Welcome to sanemos. How can we help you today?\"",
+  "agents.sofia.traits": "Welcoming,Guiding,Kind",
+
+  "diary.title": "Your Diary",
+  "diary.noEntries": "No diary entries yet",
+  "diary.savedToast": "Saved to diary",
+  "diary.delete": "🗑️ Delete",
+
+  "summary.saveToDiary": "📔 Save to Diary",
+  "summary.diarySaved": "Saved to diary",
+  "summary.sendToTherapist": "👩‍⚕️ Send to Therapist",
+
+  "therapist.name": "Dr. María Torres",
+  "therapist.specialty": "Grief Therapy",
+  "therapist.phone": "Phone",
+  "therapist.email": "Email",
+  "therapist.bio": "Grief and loss specialist with 15 years of experience",
+  "therapist.copyForEmail": "📋 Copy for email",
+
+  "appointment.title": "📅 Book Appointment",
+  "appointment.selectSlot": "Select an available time:",
+  "appointment.confirmText": "Confirm appointment on ",
+  "appointment.confirmBtn": "✓ Confirm",
+  "appointment.booked": "Appointment Booked!",
+  "appointment.bookedMsg": "Your appointment has been confirmed.",
+  "appointment.at": "at",
+
+  "toast.diarySaved": "Saved to diary",
+  "toast.therapistSent": "Summary sent to Dr. Torres",
+  "toast.appointmentBooked": "Appointment booked: {{date}}",
+  "toast.welcome": "Welcome!"
 }

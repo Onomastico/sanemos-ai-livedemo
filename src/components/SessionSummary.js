@@ -5,12 +5,13 @@ import { maskPII } from '@/lib/piiScrubber';
 import { useI18n } from '@/i18n/I18nContext';
 import EmotionTimeline from './EmotionTimeline';
 
-export default function SessionSummary({ messages, agentName, agentColor, apiKey, emotionHistory, onClose }) {
+export default function SessionSummary({ messages, agentName, agentColor, apiKey, emotionHistory, onClose, onSaveDiary, onSendToTherapist, locale }) {
     const { t } = useI18n();
     const [summary, setSummary] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [copied, setCopied] = useState(false);
+    const isEs = locale === 'es';
 
     useEffect(() => {
         generateSummary();
@@ -160,26 +161,46 @@ export default function SessionSummary({ messages, agentName, agentColor, apiKey
                 )}
 
                 {/* Actions */}
-                <div className="flex items-center justify-center gap-3 mt-8 mb-8">
+                <div className="flex flex-col gap-3 mt-8 mb-8">
                     {summary && (
-                        <button
-                            onClick={handleCopy}
-                            className="px-5 py-2.5 rounded-full text-sm font-medium border transition-all"
-                            style={{
-                                borderColor: agentColor + '60',
-                                color: agentColor,
-                                backgroundColor: copied ? agentColor + '20' : 'transparent'
-                            }}
-                        >
-                            {copied ? t('summary.copied') : t('summary.copySummary')}
-                        </button>
+                        <div className="flex items-center justify-center gap-2 flex-wrap">
+                            <button
+                                onClick={handleCopy}
+                                className="px-5 py-2.5 rounded-full text-sm font-medium border transition-all"
+                                style={{
+                                    borderColor: agentColor + '60',
+                                    color: agentColor,
+                                    backgroundColor: copied ? agentColor + '20' : 'transparent'
+                                }}
+                            >
+                                {copied ? t('summary.copied') : t('summary.copySummary')}
+                            </button>
+                            {onSaveDiary && (
+                                <button
+                                    onClick={() => onSaveDiary(summary)}
+                                    className="px-5 py-2.5 rounded-full text-sm font-medium border border-amber-500/60 text-amber-300 hover:bg-amber-500/10 transition-all"
+                                >
+                                    📔 {isEs ? 'Guardar en Diario' : 'Save to Diary'}
+                                </button>
+                            )}
+                            {onSendToTherapist && (
+                                <button
+                                    onClick={() => onSendToTherapist(summary)}
+                                    className="px-5 py-2.5 rounded-full text-sm font-medium border border-blue-500/60 text-blue-300 hover:bg-blue-500/10 transition-all"
+                                >
+                                    👩‍⚕️ {isEs ? 'Enviar a Terapeuta' : 'Send to Therapist'}
+                                </button>
+                            )}
+                        </div>
                     )}
-                    <button
-                        onClick={onClose}
-                        className="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors"
-                    >
-                        {t('summary.backHome')}
-                    </button>
+                    <div className="flex items-center justify-center">
+                        <button
+                            onClick={onClose}
+                            className="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors"
+                        >
+                            {t('summary.backHome')}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

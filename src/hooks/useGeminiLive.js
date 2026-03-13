@@ -3,13 +3,24 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 
 const GEMINI_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 
-function buildSystemPrompt(basePrompt, userContext, userCountry, locale) {
+function buildSystemPrompt(basePrompt, userContext, userCountry, locale, agentId, isFirstVisit) {
     const lang = locale === 'es' ? 'Spanish' : 'English';
     const langInstruction = `LANGUAGE INSTRUCTION: You MUST respond in ${lang}. This is non-negotiable — always speak and respond in ${lang} regardless of the language of the context below.\n\n`;
 
-    if (!userContext?.detail) return langInstruction + basePrompt;
+    let prompt = basePrompt;
+
+    // Inject first visit logic for Sofia
+    if (agentId === 'sofia') {
+        if (isFirstVisit) {
+            prompt = prompt.replace('This is the user\'s FIRST visit', 'This is the user\'s FIRST visit — ask if they want a guided tour');
+        } else {
+            prompt = prompt.replace('Returning user — greet briefly', 'Returning user — greet briefly');
+        }
+    }
+
+    if (!userContext?.detail) return langInstruction + prompt;
     const country = userCountry || userContext.country || 'Unknown';
-    return `${langInstruction}USER CONTEXT: ${userContext.detail}\nUser country: ${country}.\nAdapt your response to this person's cultural and emotional context.\n\n${basePrompt}`;
+    return `${langInstruction}USER CONTEXT: ${userContext.detail}\nUser country: ${country}.\nAdapt your response to this person's cultural and emotional context.\n\n${prompt}`;
 }
 
 function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
@@ -41,42 +52,44 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
         }
     ];
 
-    // Emotion tools — unified (1 call/turn) or separate (3 calls/turn)
-    if (emotionToolMode === 'unified') {
-        declarations.push({
-            name: "report_emotions",
-            description: "Report detected emotions from text content, voice tone, and optionally facial expression. Call once silently after each user turn. Never mention this tool.",
-            parameters: {
-                type: "OBJECT",
-                properties: {
-                    text_emotion: { type: "STRING", enum: emotionEnum, description: "Emotion from word content/meaning" },
-                    text_intensity: { type: "INTEGER", description: "Intensity 1 (mild) to 5 (overwhelming)" },
-                    voice_emotion: { type: "STRING", enum: emotionEnum, description: "Emotion from tone of voice" },
-                    voice_intensity: { type: "INTEGER", description: "Intensity 1 (mild) to 5 (overwhelming)" },
-                    facial_emotion: { type: "STRING", enum: emotionEnum, description: "Emotion from facial expression (only if camera active)" },
-                    facial_intensity: { type: "INTEGER", description: "Intensity 1 (mild) to 5 (overwhelming)" }
+    // Emotion tools — NOT available for Sofia (receptionist)
+    if (agentId !== 'sofia') {
+        if (emotionToolMode === 'unified') {
+            declarations.push({
+                name: "report_emotions",
+                description: "Report detected emotions from text content, voice tone, and optionally facial expression. Call once silently after each user turn. Never mention this tool.",
+                parameters: {
+                    type: "OBJECT",
+                    properties: {
+                        text_emotion: { type: "STRING", enum: emotionEnum, description: "Emotion from word content/meaning" },
+                        text_intensity: { type: "INTEGER", description: "Intensity 1 (mild) to 5 (overwhelming)" },
+                        voice_emotion: { type: "STRING", enum: emotionEnum, description: "Emotion from tone of voice" },
+                        voice_intensity: { type: "INTEGER", description: "Intensity 1 (mild) to 5 (overwhelming)" },
+                        facial_emotion: { type: "STRING", enum: emotionEnum, description: "Emotion from facial expression (only if camera active)" },
+                        facial_intensity: { type: "INTEGER", description: "Intensity 1 (mild) to 5 (overwhelming)" }
+                    },
+                    required: ["text_emotion", "text_intensity", "voice_emotion", "voice_intensity"]
+                }
+            });
+        } else {
+            declarations.push(
+                {
+                    name: "report_text_emotion",
+                    description: "Report the primary emotion detected from the CONTENT/MEANING of the user's words. Call silently after each user turn. Never mention this tool to the user.",
+                    parameters: { type: "OBJECT", properties: { emotion: { type: "STRING", enum: emotionEnum }, intensity: { type: "INTEGER", description: "Intensity from 1 (mild) to 5 (overwhelming)" } }, required: ["emotion", "intensity"] }
                 },
-                required: ["text_emotion", "text_intensity", "voice_emotion", "voice_intensity"]
-            }
-        });
-    } else {
-        declarations.push(
-            {
-                name: "report_text_emotion",
-                description: "Report the primary emotion detected from the CONTENT/MEANING of the user's words. Call silently after each user turn. Never mention this tool to the user.",
-                parameters: { type: "OBJECT", properties: { emotion: { type: "STRING", enum: emotionEnum }, intensity: { type: "INTEGER", description: "Intensity from 1 (mild) to 5 (overwhelming)" } }, required: ["emotion", "intensity"] }
-            },
-            {
-                name: "report_voice_emotion",
-                description: "Report the emotion detected from the user's TONE OF VOICE. Call silently after each user turn. Never mention this tool.",
-                parameters: { type: "OBJECT", properties: { emotion: { type: "STRING", enum: emotionEnum }, intensity: { type: "INTEGER", description: "Intensity from 1 (mild) to 5 (overwhelming)" } }, required: ["emotion", "intensity"] }
-            },
-            {
-                name: "report_facial_emotion",
-                description: "Report the emotion detected from the user's FACIAL EXPRESSION. Only call when camera is active. Call silently. Never mention this tool.",
-                parameters: { type: "OBJECT", properties: { emotion: { type: "STRING", enum: emotionEnum }, intensity: { type: "INTEGER", description: "Intensity from 1 (mild) to 5 (overwhelming)" } }, required: ["emotion", "intensity"] }
-            }
-        );
+                {
+                    name: "report_voice_emotion",
+                    description: "Report the emotion detected from the user's TONE OF VOICE. Call silently after each user turn. Never mention this tool.",
+                    parameters: { type: "OBJECT", properties: { emotion: { type: "STRING", enum: emotionEnum }, intensity: { type: "INTEGER", description: "Intensity from 1 (mild) to 5 (overwhelming)" } }, required: ["emotion", "intensity"] }
+                },
+                {
+                    name: "report_facial_emotion",
+                    description: "Report the emotion detected from the user's FACIAL EXPRESSION. Only call when camera is active. Call silently. Never mention this tool.",
+                    parameters: { type: "OBJECT", properties: { emotion: { type: "STRING", enum: emotionEnum }, intensity: { type: "INTEGER", description: "Intensity from 1 (mild) to 5 (overwhelming)" } }, required: ["emotion", "intensity"] }
+                }
+            );
+        }
     }
 
     // UI tools — available to all agents except Faro
@@ -122,6 +135,45 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
                 description: "Close any open popup/modal on screen. Use when the user says to close it or continue."
             }
         );
+
+        // Diary & Therapist tools — available to all except Faro and Sofia
+        if (agentId !== 'sofia') {
+            declarations.push(
+                {
+                    name: "save_diary_entry",
+                    description: "Save a diary entry from this session. Call when the user wants to save their thoughts or when offering to save.",
+                    parameters: {
+                        type: "OBJECT",
+                        properties: {
+                            title: { type: "STRING", description: "Title for the diary entry (optional, e.g. 'Sesión sobre pérdida')" }
+                        }
+                    }
+                },
+                {
+                    name: "send_to_therapist",
+                    description: "Send a summary of this session to a therapist. Prepare a brief, professional summary text.",
+                    parameters: {
+                        type: "OBJECT",
+                        properties: {
+                            summary_text: { type: "STRING", description: "Summary of the session to send" }
+                        },
+                        required: ["summary_text"]
+                    }
+                },
+                {
+                    name: "schedule_appointment",
+                    description: "Help the user schedule an appointment with their therapist. Call to open the appointment booking interface."
+                }
+            );
+
+            // Sofia-specific tool: mark onboarding as done
+            if (agentId === 'sofia') {
+                declarations.push({
+                    name: "mark_onboarding_done",
+                    description: "Mark that the user has completed the onboarding/tour. Call after the tour is complete."
+                });
+            }
+        }
     }
 
     if (agentId === 'serena') {
@@ -151,7 +203,7 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
     return declarations;
 }
 
-export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSession, onSwitchAgent, userContext, userCountry, settings, locale) {
+export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSession, onSwitchAgent, userContext, userCountry, settings, locale, isFirstVisit = false) {
     const [status, setStatus] = useState('disconnected'); // disconnected, connecting, connected
     const [agent, setAgent] = useState(initialAgent);
     const [messages, setMessages] = useState([]);         // completed full messages
@@ -167,6 +219,9 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
     const [uiToast, setUiToast] = useState(null);               // toast message string
     const [latency, setLatency] = useState(null);                // WebSocket latency in ms
     const [emotionHistory, setEmotionHistory] = useState([]);    // emotion timeline data
+    const [diaryAction, setDiaryAction] = useState(null);       // { type: 'save', title }
+    const [therapistAction, setTherapistAction] = useState(null); // { type: 'send', summary_text }
+    const [showAppointment, setShowAppointment] = useState(false); // show appointment booking modal
 
     const wsRef = useRef(null);
     const lastAudioSentRef = useRef(null);                       // timestamp of last audio send
@@ -290,7 +345,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                     model: "models/gemini-2.5-flash-native-audio-preview-12-2025",
                     generationConfig: genConfig,
                     systemInstruction: {
-                        parts: [{ text: buildSystemPrompt(agent.systemPrompt, userContextRef.current, userCountryRef.current, localeRef.current) }]
+                        parts: [{ text: buildSystemPrompt(agent.systemPrompt, userContextRef.current, userCountryRef.current, localeRef.current, agent.id, isFirstVisit) }]
                     },
                     tools: [
                         {
@@ -477,6 +532,35 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                             if (call.name === 'dismiss_modal') {
                                 setSocialPost(null);
                             }
+                            if (call.name === 'save_diary_entry') {
+                                const args = call.args || {};
+                                // Safety check: only allow saving if there are enough messages (session has content)
+                                if (currentMsgRef.current || messages.length > 2) {
+                                    setDiaryAction({ type: 'save', title: args.title });
+                                } else {
+                                    setUiToast('No hay sesión para guardar');
+                                    setTimeout(() => setUiToast(null), 3000);
+                                }
+                            }
+                            if (call.name === 'send_to_therapist') {
+                                const args = call.args || {};
+                                if (currentMsgRef.current || messages.length > 2) {
+                                    setTherapistAction({ type: 'send', summary_text: args.summary_text });
+                                } else {
+                                    setUiToast('No hay sesión para enviar');
+                                    setTimeout(() => setUiToast(null), 3000);
+                                }
+                            }
+                            if (call.name === 'schedule_appointment') {
+                                // Schedule can happen anytime
+                                setShowAppointment(true);
+                            }
+                            if (call.name === 'mark_onboarding_done') {
+                                // Mark onboarding as done in localStorage
+                                localStorage.setItem('sanemos_onboarding_done', 'true');
+                                setUiToast('¡Bienvenido/a!');
+                                setTimeout(() => setUiToast(null), 3000);
+                            }
                             // Queue toolResponse for non-escalation calls
                             responses.push({
                                 id: call.id,
@@ -521,7 +605,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
             setError(err.message);
             setStatus('disconnected');
         }
-    }, [apiKey, agent.systemPrompt]);
+    }, [apiKey, agent.systemPrompt, isFirstVisit]);
 
     const disconnect = useCallback(() => {
         if (wsRef.current) {
@@ -806,6 +890,12 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
         uiToast,
         latency,
         emotionHistory,
+        diaryAction,
+        setDiaryAction,
+        therapistAction,
+        setTherapistAction,
+        showAppointment,
+        setShowAppointment,
         connect,
         disconnect
     };

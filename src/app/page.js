@@ -1,14 +1,15 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { getAllAgents } from '@/lib/agents';
+import { getAllAgents, getAgent } from '@/lib/agents';
 import { USER_CONTEXTS, detectCountry } from '@/lib/userContexts';
+import { loadDiary } from '@/lib/diary';
 import Image from 'next/image';
 import GeminiLiveSession from '@/components/GeminiLiveSession';
+import DiaryModal from '@/components/DiaryModal';
 import { I18nProvider, useI18n } from '@/i18n/I18nContext';
 import LanguageToggle from '@/components/LanguageToggle';
 import SettingsPanel, { loadSettings } from '@/components/SettingsPanel';
-import OnboardingOverlay from '@/components/OnboardingOverlay';
 
 function HomeContent() {
   const { t } = useI18n();
@@ -22,7 +23,9 @@ function HomeContent() {
   const [accessError, setAccessError] = useState(false);
   const [geminiSettings, setGeminiSettings] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showDiary, setShowDiary] = useState(false);
+  const [isFirstVisit, setIsFirstVisit] = useState(false);
+  const [diaryEntries, setDiaryEntries] = useState([]);
 
   const requiredCode = process.env.NEXT_PUBLIC_ACCESS_CODE;
 
@@ -33,9 +36,9 @@ function HomeContent() {
       setIsAuthorized(true);
     }
     try {
-      if (!localStorage.getItem('sanemos_onboarding_done')) {
-        setShowOnboarding(true);
-      }
+      const onboardingDone = localStorage.getItem('sanemos_onboarding_done') === 'true';
+      setIsFirstVisit(!onboardingDone);
+      setDiaryEntries(loadDiary());
     } catch {}
   }, []);
 
@@ -59,6 +62,7 @@ function HomeContent() {
         userCountry={detectedCountry}
         geminiSettings={geminiSettings}
         onClose={() => setSelectedAgent(null)}
+        isFirstVisit={isFirstVisit}
       />
     );
   }
@@ -115,13 +119,11 @@ function HomeContent() {
 
       <div className="absolute top-6 right-6 z-20 flex items-center gap-2">
         <button
-          onClick={() => setShowOnboarding(true)}
+          onClick={() => { setShowDiary(true); setDiaryEntries(loadDiary()); }}
           className="p-2 rounded-full backdrop-blur-md border bg-white/5 border-white/10 text-gray-400 hover:bg-white/10 transition-colors"
-          title="Tour"
+          title={t('page.diary') || 'Diary'}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
+          📔
         </button>
         <button
           onClick={() => setShowSettings(!showSettings)}
@@ -169,6 +171,25 @@ function HomeContent() {
         </div>
       )}
 
+      {/* Start Button */}
+      <div className="z-10 mb-12">
+        <button
+          onClick={() => {
+            if (!apiKey) {
+              alert(t('page.apiKeyAlert'));
+              return;
+            }
+            const sofiaAgent = getAgent('sofia');
+            if (sofiaAgent) {
+              setSelectedAgent(sofiaAgent);
+            }
+          }}
+          className="px-8 py-4 rounded-full bg-gradient-to-r from-[#9CCF6A] to-[#5FB7A6] text-black font-bold text-lg hover:opacity-90 transition-all shadow-lg hover:shadow-xl"
+        >
+          👋 {t('page.startSession') || 'Comenzar'}
+        </button>
+      </div>
+
       {/* Context Selection */}
       <section className="w-full max-w-6xl z-10 mb-10">
         <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4 text-center">
@@ -204,7 +225,7 @@ function HomeContent() {
       </section>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl z-10">
-        {agents.map((agent) => (
+        {agents.filter(a => !a.isReceptionist).map((agent) => (
           <button
             key={agent.id}
             onClick={() => {
@@ -322,12 +343,12 @@ function HomeContent() {
         </a>
       </footer>
 
-      {showOnboarding && (
-        <OnboardingOverlay onClose={() => {
-          setShowOnboarding(false);
-          try { localStorage.setItem('sanemos_onboarding_done', '1'); } catch {}
-        }} />
-      )}
+      {/* Diary Modal */}
+      <DiaryModal
+        isOpen={showDiary}
+        onClose={() => setShowDiary(false)}
+        locale={t('__lang__')}
+      />
     </main>
   );
 }

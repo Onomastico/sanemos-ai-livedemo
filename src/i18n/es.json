@@ -198,5 +198,42 @@
   "settings.samples": "muestras",
   "settings.resetDemo": "Reiniciar demo",
   "settings.resetDemoHint": "Limpia el onboarding para que el tour guiado aparezca de nuevo en la próxima sesión.",
-  "settings.resetDemoDone": "¡Listo! El onboarding aparecerá en la próxima sesión."
+  "settings.resetDemoDone": "¡Listo! El onboarding aparecerá en la próxima sesión.",
+
+  "page.startSession": "👋 Comenzar",
+  "page.diary": "Diario",
+
+  "agents.sofia.description": "Tu recepcionista cálida que te guía hacia el agente perfecto para tu necesidad de hoy.",
+  "agents.sofia.focus": "BIENVENIDA Y ROUTING",
+  "agents.sofia.quote": "\"Bienvenido/a a sanemos. ¿Cómo podemos ayudarte hoy?\"",
+  "agents.sofia.traits": "Acogedora,Orientadora,Amable",
+
+  "diary.title": "Tu Diario",
+  "diary.noEntries": "No hay entradas en tu diario aún",
+  "diary.savedToast": "Guardado en tu diario",
+  "diary.delete": "🗑️ Eliminar",
+
+  "summary.saveToDiary": "📔 Guardar en Diario",
+  "summary.diarySaved": "Guardado en tu diario",
+  "summary.sendToTherapist": "👩‍⚕️ Enviar a Terapeuta",
+
+  "therapist.name": "Dra. María Torres",
+  "therapist.specialty": "Terapia del Duelo",
+  "therapist.phone": "Teléfono",
+  "therapist.email": "Email",
+  "therapist.bio": "Especialista en duelo y pérdida con 15 años de experiencia",
+  "therapist.copyForEmail": "📋 Copiar para email",
+
+  "appointment.title": "📅 Agendar Cita",
+  "appointment.selectSlot": "Selecciona un horario disponible:",
+  "appointment.confirmText": "Confirmar cita el ",
+  "appointment.confirmBtn": "✓ Confirmar",
+  "appointment.booked": "¡Cita Agendada!",
+  "appointment.bookedMsg": "Tu cita ha sido confirmada.",
+  "appointment.at": "a las",
+
+  "toast.diarySaved": "Guardado en tu diario",
+  "toast.therapistSent": "Resumen enviado a Dra. Torres",
+  "toast.appointmentBooked": "Cita agendada: {{date}}",
+  "toast.welcome": "¡Bienvenido/a!"
 }

@@ -4,10 +4,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useGeminiLive } from '@/hooks/useGeminiLive';
 import { getAgent } from '@/lib/agents';
 import { maskPII } from '@/lib/piiScrubber';
+import { saveDiaryEntry } from '@/lib/diary';
 import { useI18n } from '@/i18n/I18nContext';
 import BreathingVisualizer from './BreathingVisualizer';
 import SessionSummary from './SessionSummary';
 import SocialPostModal from './SocialPostModal';
+import DiaryModal from './DiaryModal';
+import TherapistModal from './TherapistModal';
+import AppointmentModal from './AppointmentModal';
 import LanguageToggle from './LanguageToggle';
 
 const EMOTION_COLORS = {
@@ -16,11 +20,13 @@ const EMOTION_COLORS = {
     love: '#E91E8F', numbness: '#636E72'
 };
 
-export default function GeminiLiveSession({ agent: initialAgent, apiKey, userContext, userCountry, geminiSettings, onClose }) {
+export default function GeminiLiveSession({ agent: initialAgent, apiKey, userContext, userCountry, geminiSettings, onClose, isFirstVisit }) {
     const { t, locale } = useI18n();
     const [isFaroMode, setIsFaroMode] = useState(false);
     const [showSidePanel, setShowSidePanel] = useState(false);
     const [showSummary, setShowSummary] = useState(false);
+    const [showDiary, setShowDiary] = useState(false);
+    const [showTherapist, setShowTherapist] = useState(false);
     const [activeTooltip, setActiveTooltip] = useState(null);
     const sidePanelRef = useRef(null);
     const videoPipRef = useRef(null);
@@ -49,8 +55,11 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
         cameraEnabled, toggleCamera, videoStreamRef,
         socialPost, setSocialPost, uiToast,
         latency, emotionHistory,
+        diaryAction, setDiaryAction,
+        therapistAction, setTherapistAction,
+        showAppointment, setShowAppointment,
         switchAgent, connect, disconnect
-    } = useGeminiLive(apiKey, initialAgent, handleEscalateToFaro, () => handleExitRef.current?.(), handleSwitchAgent, translatedContext, userCountry, geminiSettings, locale);
+    } = useGeminiLive(apiKey, initialAgent, handleEscalateToFaro, () => handleExitRef.current?.(), handleSwitchAgent, translatedContext, userCountry, geminiSettings, locale, isFirstVisit);
 
     useEffect(() => {
         connect();
@@ -59,6 +68,29 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Handle diary save action
+    useEffect(() => {
+        if (diaryAction?.type === 'save') {
+            saveDiaryEntry({
+                title: diaryAction.title,
+                agentName: agent.name,
+                agentId: agent.id,
+                summary: '',
+                emotionTimeline: emotionHistory,
+                messages
+            });
+            setDiaryAction(null);
+        }
+    }, [diaryAction, agent, emotionHistory, messages, setDiaryAction]);
+
+    // Handle therapist action
+    useEffect(() => {
+        if (therapistAction?.type === 'send') {
+            setShowTherapist(true);
+            setTherapistAction(null);
+        }
+    }, [therapistAction, setTherapistAction]);
 
     // Auto-scroll side panel
     useEffect(() => {
@@ -99,6 +131,24 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
     };
     handleExitRef.current = handleExit;
 
+    // Handle save to diary from summary
+    const handleSaveDiary = (summaryText) => {
+        saveDiaryEntry({
+            title: `Sesión con ${agent.name}`,
+            agentName: agent.name,
+            agentId: agent.id,
+            summary: summaryText,
+            emotionTimeline: emotionHistory,
+            messages
+        });
+    };
+
+    // Handle send to therapist from summary
+    const handleSendToTherapist = (summaryText) => {
+        setTherapistAction({ type: 'send', summary_text: summaryText });
+        setShowTherapist(true);
+    };
+
     if (showSummary) {
         return (
             <SessionSummary
@@ -108,6 +158,9 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                 apiKey={apiKey}
                 emotionHistory={emotionHistory}
                 onClose={onClose}
+                onSaveDiary={handleSaveDiary}
+                onSendToTherapist={handleSendToTherapist}
+                locale={locale}
             />
         );
     }
@@ -471,6 +524,31 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                     onClose={() => setSocialPost(null)}
                 />
             )}
+
+            {/* Diary Modal */}
+            <DiaryModal
+                isOpen={showDiary}
+                onClose={() => setShowDiary(false)}
+                locale={locale}
+            />
+
+            {/* Therapist Modal */}
+            <TherapistModal
+                isOpen={showTherapist}
+                onClose={() => setShowTherapist(false)}
+                summaryText={therapistAction?.summary_text || ''}
+                locale={locale}
+            />
+
+            {/* Appointment Modal */}
+            <AppointmentModal
+                isOpen={showAppointment}
+                onClose={() => setShowAppointment(false)}
+                locale={locale}
+                onBooking={() => {
+                    // Show toast when appointment is booked
+                }}
+            />
 
             {/* UI Toast */}
             {uiToast && (
