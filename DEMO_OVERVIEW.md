@@ -45,17 +45,23 @@ Sanemos AI Live es una plataforma de acompañamiento emocional en duelo que util
 
 ---
 
-## Los 5 Agentes
+## Los 8 Agentes
 
-| Agente | Rol | Voz | Color | Emoji |
-|--------|-----|-----|-------|-------|
-| **Luna** | Escucha empática y validación emocional | Aoede | `#7B8FD4` | 🫂 |
-| **Marco** | Guía de duelo y psicoeducación | Orus | `#6B9E8A` | 🧭 |
-| **Serena** | Mindfulness, respiración y grounding | Kore | `#D4A574` | 🧘 |
-| **Alma** | Narrativa terapéutica y significado | Leda | `#C47D8A` | 📖 |
-| **Faro** | Soporte en crisis (activación automática) | Fenrir | `#E85D75` | 🚨 |
+| Agente | Rol | Voz | Color | Emoji | Tipo |
+|--------|-----|-----|-------|-------|------|
+| **Sofía** | Recepcionista y routing de usuarios | Aoede | `#5FB7A6` | 👋 | Receptionist |
+| **Luna** | Escucha empática y validación emocional | Aoede | `#7B8FD4` | 🫂 | Apoyo |
+| **Marco** | Guía de duelo y psicoeducación | Orus | `#6B9E8A` | 🧭 | Apoyo |
+| **Serena** | Mindfulness, respiración y grounding | Kore | `#D4A574` | 🧘 | Apoyo |
+| **Alma** | Narrativa terapéutica y significado | Leda | `#C47D8A` | 📖 | Apoyo |
+| **Nora** | Apoyo para pérdida de mascotas | Kore | `#C9956C` | 🐾 | Apoyo |
+| **Iris** | Separación, divorcio y transformación | Leda | `#9D7BA8` | ✨ | Apoyo |
+| **Faro** | Soporte en crisis (activación automática) | Fenrir | `#E85D75` | 🚨 | Crisis |
 
-Cada agente tiene un `systemPrompt` especializado, avatar PNG, color temático, y voz diferenciada. Marco y Faro usan voces masculinas; Luna, Serena y Alma usan voces femeninas.
+- **Sofía** es el agente receptor inicial (aparece al clickear "Comenzar") que saluda y rutea a los usuarios hacia los agentes especializados
+- Todos los agentes tienen `systemPrompt` especializado, avatar PNG, color temático, y voz diferenciada
+- Sofía tiene flag `isReceptionist: true` para filtrarla de la grilla principal
+- Sofía es excluida de emotion tools pero tiene acceso a herramientas de diario y terapeuta
 
 ---
 
@@ -144,6 +150,37 @@ Cada agente tiene un `systemPrompt` especializado, avatar PNG, color temático, 
 - Se aplica a toda transcripción mostrada en UI (historial, burbuja live, resumen)
 - Reemplazos: `[TELÉFONO OCULTO]`, `[EMAIL OCULTO]`, `[RUT/ID OCULTO]`
 
+### 12. Diario Personal (Personal Diary)
+- **Storage:** localStorage con clave `sanemos_diary`
+- **Modal:** `DiaryModal` con lista de entradas expandibles, ordenadas por fecha descendente
+- **Datos por entrada:** id, date, title, agentName, agentId, summary, emotionTimeline, transcript
+- **Tool:** `save_diary_entry` (disponible para todos los agentes excepto Faro)
+- **Acceso:** Botón 📔 en toolbar de la landing page
+- **Funcionalidad:** Ver resumen + transcripción completa, eliminar entradas con confirmación
+
+### 13. Integración con Terapeuta
+- **Terapeuta hardcodeada:** Dra. María Torres, especialista en duelo (15 años experiencia)
+- **Contact:** Teléfono y email para contacto directo
+- **Tools:**
+  - `send_to_therapist`: Abre modal para compartir resumen de sesión
+  - `schedule_appointment`: Abre modal para agendar cita
+- **Modal TherapistModal:** Muestra info terapeuta + botón para copiar resumen formateado al email
+- **Modal AppointmentModal:** Grid de slots disponibles (próximos 3 días hábiles × 3 horarios: 10:00, 15:00, 17:00)
+- **Storage de citas:** localStorage con clave `sanemos_appointments`
+- **Accesibilidad:** Botones en SessionSummary: "Guardar en Diario" y "Enviar a Terapeuta"
+
+### 14. Agente Recepcionista (Sofía)
+- **Rol:** Bienvenida, routing y onboarding
+- **Flow:**
+  1. Usuario clickea "👋 Comenzar" en landing
+  2. Sofía saluda warmly y presenta opciones de agentes
+  3. Usuario pide hablar con agente específico o usa funciones (diario, terapeuta, citas)
+  4. Sofía routea con `switch_agent` hacia el agente elegido
+- **Onboarding:** Si es primera visita (`isFirstVisit`), Sofía ofrece tour guiado por voz
+- **Tool exclusiva:** `mark_onboarding_done` para marcar localStorage después del tour
+- **Exclusiones:** No tiene emotion tools (no hace acompañamiento), pero tiene access a diary/therapist tools
+- **Filtrado:** Sofía se filtra de la grilla de agentes con `filter(a => !a.isReceptionist)`
+
 ---
 
 ## Infraestructura de Tool Calls (Function Calling)
@@ -153,15 +190,35 @@ El hook `useGeminiLive` implementa un dispatcher completo de tool calls:
 ```
 msg.toolCall.functionCalls → for...of loop:
   ├── escalate_to_crisis_faro → switchAgent(faro) + return (WS se cierra)
-  ├── report_emotion → setEmotion({ emotion, intensity })
+  ├── end_session → closingIntentionallyRef=true + waitForAudio (8s max) + return
+  ├── switch_agent → closingIntentionallyRef=true + onSwitchAgent(agentId) + return
+  ├── report_emotions / report_text_emotion / report_voice_emotion / report_facial_emotion → setEmotion + setEmotionHistory
   ├── start_breathing_exercise → setBreathingExercise({ type, inhale, hold, exhale, cycles })
-  └── stop_breathing_exercise → setBreathingExercise(null)
+  ├── stop_breathing_exercise → setBreathingExercise(null)
+  ├── generate_social_post → setSocialPost({ platform, post_text, occasion })
+  ├── copy_to_clipboard → navigator.clipboard.writeText() + setUiToast
+  ├── open_url → window.open(url, '_blank') + setUiToast
+  ├── dismiss_modal → setSocialPost(null)
+  ├── save_diary_entry → setDiaryAction({ type: 'save', title }) [si messages.length > 2]
+  ├── send_to_therapist → setTherapistAction({ type: 'send', summary_text }) [si messages.length > 2]
+  ├── schedule_appointment → setShowAppointment(true)
+  └── mark_onboarding_done → localStorage.setItem('sanemos_onboarding_done', 'true')
 
-→ Envía toolResponse para TODOS los calls no-escalación:
+→ Envía toolResponse para TODOS los calls no-destructivos:
   ws.send({ toolResponse: { functionResponses: [{ id, response: { result: { success: true } } }] } })
 ```
 
-Las `functionDeclarations` se construyen dinámicamente por agente: todos reciben `escalate_to_crisis_faro` + `report_emotion`, y Serena además recibe `start_breathing_exercise` + `stop_breathing_exercise`.
+Las `functionDeclarations` se construyen dinámicamente por agente:
+- **Todos:** `escalate_to_crisis_faro`, `end_session`, `switch_agent`, UI tools
+- **Excepto Sofía:** Emotion tools
+- **Excepto Faro:** `save_diary_entry`, `send_to_therapist`, `schedule_appointment`
+- **Solo Serena:** `start_breathing_exercise`, `stop_breathing_exercise`
+- **Solo Sofía:** `mark_onboarding_done`
+
+**Edge cases:**
+- `save_diary_entry` y `send_to_therapist` verifican `messages.length > 2` (safety: requieren sesión real)
+- `schedule_appointment` siempre funciona (no requiere sesión previa)
+- Destructive tools (`end_session`, `switch_agent`, `escalate_to_crisis_faro`) no envían `toolResponse`
 
 ---
 
@@ -170,24 +227,43 @@ Las `functionDeclarations` se construyen dinámicamente por agente: todos recibe
 ```
 src/
 ├── app/
-│   ├── page.js              # Landing page con access gate, selector de contexto + grid de agentes
-│   ├── layout.js             # Layout root
-│   ├── globals.css           # Estilos globales + Tailwind
+│   ├── page.js                    # Landing page: access gate, contexto, botón "Comenzar", grid de agentes, diary modal
+│   ├── architecture/page.js       # Diagrama interactivo de arquitectura con agentes, tools, features
+│   ├── layout.js                  # Layout root
+│   ├── globals.css                # Estilos globales + Tailwind
 │   └── favicon.ico
 ├── components/
-│   ├── GeminiLiveSession.js  # UI de sesión: avatar, emociones, historial, PIP, visualizador
-│   ├── BreathingVisualizer.js # Animación de respiración con fases y ciclos
-│   └── SessionSummary.js     # Resumen post-sesión via REST API
+│   ├── GeminiLiveSession.js       # UI de sesión: avatar, emociones, historial, PIP, modales integrados
+│   ├── SessionSummary.js          # Resumen post-sesión via REST API + botones Diary/Therapist
+│   ├── BreathingVisualizer.js     # Animación de respiración con fases y ciclos
+│   ├── DiaryModal.js              # Modal de diario personal con lista expandible de entradas
+│   ├── DiaryModal.module.css      # Estilos de diario
+│   ├── TherapistModal.js          # Modal con info terapeuta + opción de copiar para email
+│   ├── TherapistModal.module.css  # Estilos de terapeuta
+│   ├── AppointmentModal.js        # Modal de agendar citas con grid de slots
+│   ├── AppointmentModal.module.css # Estilos de citas
+│   ├── SocialPostModal.js         # Modal de posts de redes sociales
+│   ├── LanguageToggle.js          # Toggle ES/EN
+│   ├── SettingsPanel.js           # Panel de configuración de API
+│   ├── OnboardingOverlay.js       # Tour de onboarding (legacy)
+│   └── EmotionTimeline.js         # Línea temporal de emociones
 ├── hooks/
-│   └── useGeminiLive.js      # Core hook: WebSocket, audio, video, tools, transcripción
-└── lib/
-    ├── agents.js             # Definición de los 5 agentes (prompts, voces, colores)
-    ├── userContexts.js       # Perfiles de usuario + detección de país
-    └── piiScrubber.js        # Masking de teléfonos, emails, RUT/DNI
+│   └── useGeminiLive.js           # Core hook: WebSocket, audio, video, tools, modales, diary/therapist
+├── lib/
+│   ├── agents.js                  # Definición de 8 agentes: Sofía, Luna, Marco, Serena, Alma, Nora, Iris, Faro
+│   ├── diary.js                   # Funciones: loadDiary, saveDiaryEntry, deleteDiaryEntry, formatDiaryDate
+│   ├── therapist.js               # THERAPIST const, getAvailableSlots, bookAppointment, getAppointments
+│   ├── userContexts.js            # Perfiles de usuario + detección de país
+│   ├── piiScrubber.js             # Masking de teléfonos, emails, RUT/DNI
+│   └── gemini-api-notes.md        # Notas de configuración de API (legacy)
+└── i18n/
+    ├── I18nContext.js             # Context de internacionalización
+    ├── es.json                    # Traducciones español (90+ keys)
+    └── en.json                    # Traducciones inglés (90+ keys)
 
 public/
-├── luna.png, marco.png, serena.png, alma.png, faro.png  # Avatares de agentes
-├── sanemos_logo.png, sanemos_logo_2.png                  # Logo
+├── sofia.png, luna.png, marco.png, serena.png, alma.png, nora.png, iris.png, faro.png  # Avatares
+├── sanemos_logo.png, sanemos_logo_2.png                                                 # Logos
 └── [otros assets decorativos]
 ```
 
@@ -245,17 +321,28 @@ La API key de Google Cloud **no debe tener restricción por HTTP Referrer**, ya 
 
 ## Bugs Resueltos Durante el Desarrollo
 
+### Fase 1: Audio & WebSocket
 - `speechConfig` en nivel incorrecto del setup message → moverlo dentro de `generationConfig`
 - Mensajes cortados por `turnComplete` prematuro → debounce de 600ms
 - Stale closures en `ws.onmessage` → `useRef` para acumulador de mensajes
 - Audio cortado entre chunks → playback gapless con `source.start(scheduledTime)`
 - React strict mode double-mount → verificación `wsRef.current !== ws` en handlers
 - Media stream leak → guardar ref y stop tracks en cleanup
-- Faro lento al activarse → reducir delays de reconexión
 - `<ctrl46>` artifacts en transcripción → filtro regex en `cleanTranscript()`
+
+### Fase 2: Video & Features
+- Faro lento al activarse → reducir delays de reconexión
 - Video PIP sin imagen → polling async para conectar stream al elemento `<video>`
 - Video crash 1011 → esperar `onloadeddata` + try-catch en cada frame
 - Resumen cortado → `maxOutputTokens` de 1024 a 4096
 - Secciones del resumen no parseadas → strip markdown formatting antes de matchear títulos
 - Ejercicio de respiración demasiado rápido → mínimos forzados + rest phase + no auto-dismiss
 - Emotion tracking agregado a Faro por error → removido manualmente
+
+### Fase 3: Diary, Therapist, Sofía
+- `save_diary_entry` sin sesión → verificación `messages.length > 2` antes de guardar
+- `send_to_therapist` sin contexto → pasar `summary_text` desde tool args
+- Sofía aparecía en grid de agentes → agregar flag `isReceptionist` + filtro en getAllAgents
+- Emotion tools para Sofía → excluir en buildFunctionDeclarations basado en `agentId === 'sofia'`
+- Onboarding no se detectaba → usar `isFirstVisit` prop en GeminiLiveSession
+- localStorage key collision → usar `sanemos_diary` y `sanemos_appointments` como keys únicas
