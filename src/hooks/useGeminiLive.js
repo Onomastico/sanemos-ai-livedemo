@@ -255,6 +255,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
     const [diaryAction, setDiaryAction] = useState(null);       // { type: 'save', title }
     const [therapistAction, setTherapistAction] = useState(null); // { type: 'send', summary_text }
     const [showAppointment, setShowAppointment] = useState(false); // show appointment booking modal
+    const dismissSummaryCallbackRef = useRef(null); // callback to close SessionSummary from voice commands
     const [showDiaryModal, setShowDiaryModal] = useState(false); // show diary viewer modal
     const [showAppointmentsModal, setShowAppointmentsModal] = useState(false); // show appointments viewer modal
     const lastSessionDataRef = useRef(null); // stores previous session data for Sofia post-session review
@@ -610,6 +611,8 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                             if (call.name === 'dismiss_modal') {
                                 setSocialPost(null);
                                 setShowDiaryModal(false);
+                                setShowAppointmentsModal(false);
+                                if (dismissSummaryCallbackRef.current) dismissSummaryCallbackRef.current();
                             }
                             if (call.name === 'show_diary') {
                                 setShowDiaryModal(true);
@@ -626,6 +629,10 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                                 } else {
                                     setUiToast('No hay sesión para guardar');
                                     setTimeout(() => setUiToast(null), 3000);
+                                    // Override toolResponse with failure
+                                    const idx = responses.findIndex(r => r.id === call.id);
+                                    if (idx >= 0) responses.splice(idx, 1);
+                                    responses.push({ id: call.id, response: { result: { success: false, reason: 'No active session to save' } } });
                                 }
                             }
                             if (call.name === 'send_to_therapist') {
@@ -635,6 +642,10 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                                 } else {
                                     setUiToast('No hay sesión para enviar');
                                     setTimeout(() => setUiToast(null), 3000);
+                                    // Override toolResponse with failure
+                                    const idx = responses.findIndex(r => r.id === call.id);
+                                    if (idx >= 0) responses.splice(idx, 1);
+                                    responses.push({ id: call.id, response: { result: { success: false, reason: 'No active session to send' } } });
                                 }
                             }
                             if (call.name === 'schedule_appointment') {
@@ -1044,6 +1055,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
         socialPost,
         setSocialPost,
         uiToast,
+        setUiToast,
         latency,
         emotionHistory,
         diaryAction,
@@ -1057,6 +1069,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
         showAppointmentsModal,
         setShowAppointmentsModal,
         lastSessionDataRef,
+        dismissSummaryCallbackRef,
         connect,
         disconnect
     };

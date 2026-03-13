@@ -12,8 +12,9 @@ Sanemos AI Live es una plataforma de acompañamiento emocional en duelo con IA c
 
 ### 1. **Agente Recepcionista (Sofía)**
 - Saluda y rutea usuarios hacia agentes especializados
-- Activa automáticamente al clickear "👋 Comenzar" en landing
-- Ofrece tour onboarding para nuevos usuarios
+- Activa automáticamente al clickear avatar de Sofía en landing
+- Ofrece tour onboarding detallado (10 temas) para nuevos usuarios
+- Speech bubbles decorativas alrededor del avatar mostrando comandos de ejemplo
 - Excluida de emotion tools (solo routing)
 - Flag: `isReceptionist: true`
 
@@ -27,7 +28,7 @@ Sanemos AI Live es una plataforma de acompañamiento emocional en duelo con IA c
 - Dra. María Torres hardcodeada
 - Slots de citas: próximos 3 días hábiles × 3 horarios (10:00, 15:00, 17:00)
 - Storage en localStorage (`sanemos_appointments`)
-- Tools: `send_to_therapist`, `schedule_appointment`
+- Tools: `send_to_therapist`, `schedule_appointment` (picker visual), `book_appointment` (con día/hora)
 
 ### 4. **Conversación de Voz Multimodal**
 - WebSocket directo a Gemini Live API
@@ -44,6 +45,19 @@ Sanemos AI Live es una plataforma de acompañamiento emocional en duelo con IA c
 - Generado con Gemini REST API
 - 4 secciones: Emocional, Temas, Recursos, Cierre
 - Botones: "Guardar en Diario", "Enviar a Terapeuta"
+- Cerrable por voz via `dismiss_modal` (usa `dismissSummaryCallbackRef`)
+
+### 7. **Tema Claro/Oscuro/Sistema**
+- ThemeProvider con 3 modos: dark, light, system
+- Persistencia en localStorage (`sanemos_theme`)
+- FOUC prevention con inline script en `<head>`
+- CSS variables en `.dark` / `.light` selectors
+- ThemeToggle pill en toolbar (junto a LanguageToggle)
+
+### 8. **Página de Arquitectura**
+- Diagrama interactivo en `/architecture`
+- Respeta tema de color e idioma (i18n completo con claves `arch.*`)
+- ThemeToggle + LanguageToggle integrados
 
 ---
 
@@ -56,12 +70,14 @@ TODOS:
   - end_session (sin toolResponse)
   - switch_agent (sin toolResponse)
   - UI tools: generate_social_post, copy_to_clipboard, open_url, dismiss_modal
+  - show_diary, show_appointments
 
 EXCEPTO SOFÍA:
   - report_emotions / report_text_emotion / report_voice_emotion / report_facial_emotion
   - save_diary_entry (si messages.length > 2)
   - send_to_therapist (si messages.length > 2)
-  - schedule_appointment
+  - schedule_appointment (picker visual)
+  - book_appointment (con preferred_day + preferred_time)
 
 EXCEPTO FARO:
   - (todos los anteriores)
@@ -96,12 +112,17 @@ src/
 │   ├── DiaryModal.js           # Modal diario
 │   ├── TherapistModal.js       # Modal terapeuta
 │   ├── AppointmentModal.js     # Modal citas
-│   └── BreathingVisualizer.js  # Ejercicios respiración
+│   ├── BreathingVisualizer.js  # Ejercicios respiración
+│   ├── LanguageToggle.js       # Toggle ES/EN
+│   └── ThemeToggle.js          # Toggle dark/light/system
 ├── hooks/
 │   └── useGeminiLive.js        # WebSocket + handlers + states
+├── theme/
+│   └── ThemeContext.js          # ThemeProvider + useTheme
 └── i18n/
-    ├── es.json            # 90+ claves español
-    └── en.json            # 90+ claves inglés
+    ├── I18nContext.js     # I18nProvider + useI18n
+    ├── es.json            # 150+ claves español
+    └── en.json            # 150+ claves inglés
 ```
 
 ---
@@ -128,9 +149,9 @@ NEXT_PUBLIC_ACCESS_CODE=<opcional-para-demo>
 
 ### 1. Usuario Nuevo
 ```
-Landing → "Comenzar" → Sofía (isFirstVisit=true)
-  → Sofía ofrece tour onboarding por voz
-  → Usuario acepta → Sofía guía features
+Landing → Click avatar Sofía → Sofía (isFirstVisit=true)
+  → Sofía ofrece tour onboarding detallado por voz (10 temas)
+  → Usuario acepta → Sofía cubre: agentes, comandos de voz, diario, terapeuta, citas, posts, respiración, cámara, settings, privacidad
   → Sofía llama mark_onboarding_done
   → localStorage setItem("sanemos_onboarding_done", "true")
   → Sofía routea con switch_agent hacia agente elegido
@@ -169,6 +190,9 @@ SessionSummary renderiaza → Usuario clickea "👩‍⚕️ Enviar a Terapeuta"
 - ✅ `isReceptionist` flag para excluir Sofía de grid
 - ✅ Emotion tools excluidas para Sofía en buildFunctionDeclarations
 - ✅ Keys localStorage únicas: `sanemos_diary`, `sanemos_appointments`
+- ✅ `dismiss_modal` cierra SessionSummary via `dismissSummaryCallbackRef`
+- ✅ `book_appointment` vs `schedule_appointment`: Sofía usa `book_appointment` cuando el usuario especifica día/hora
+- ✅ Diary save via voz no se perdía por nullificar `lastSessionDataRef` después de save
 
 ---
 
@@ -186,7 +210,7 @@ SessionSummary renderiaza → Usuario clickea "👩‍⚕️ Enviar a Terapeuta"
 - Safety checks: `messages.length > 2` para diary/therapist
 
 ### i18n Keys
-- Formato: `page.`, `session.`, `diary.`, `therapist.`, `toast.`, `agents.`
+- Formato: `page.`, `session.`, `diary.`, `therapist.`, `toast.`, `agents.`, `arch.`
 - Fallback: inglés por defecto si no existe traducción
 
 ---
@@ -242,10 +266,10 @@ gcloud builds submit --config cloudbuild.yaml \
 - **Prioridad:** Mantener bajo latency (WebSocket directo, no servidor intermediario)
 - **Compatibilidad:** Next.js 16 con Turbopack, React 19
 - **Seguridad:** PII scrubbing client-side, API key en env, no revelar en logs
-- **Accesibilidad:** i18n ES/EN, responsive mobile-first
+- **Accesibilidad:** i18n ES/EN, responsive mobile-first, tema claro/oscuro/sistema
 - **Testing:** Build local before pushing, verificar con `npm run build`
 
 ---
 
-**Última actualización:** 2026-03-12
-**Versión:** 0.3 (con Sofía, Diary, Therapist)
+**Última actualización:** 2026-03-13
+**Versión:** 0.4 (tema claro/oscuro, burbujas Sofía, tour detallado, book_appointment, dismiss_modal fix, arquitectura i18n)

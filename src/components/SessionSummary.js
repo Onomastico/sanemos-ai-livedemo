@@ -99,7 +99,8 @@ export default function SessionSummary({ messages, agentName, agentColor, apiKey
     };
 
     return (
-        <div className="fixed inset-0 bg-black z-50 flex items-center justify-center p-6 overflow-y-auto">
+        <div className="fixed inset-0 bg-bg z-50 overflow-y-auto">
+            <div className="min-h-full flex items-center justify-center p-6">
             <div className="w-full max-w-2xl">
                 {/* Header */}
                 <div className="text-center mb-8">
@@ -107,8 +108,8 @@ export default function SessionSummary({ messages, agentName, agentColor, apiKey
                         style={{ backgroundColor: agentColor + '20', border: `2px solid ${agentColor}40` }}>
                         📝
                     </div>
-                    <h2 className="text-2xl font-bold text-white">{t('summary.title')}</h2>
-                    <p className="text-gray-500 text-sm mt-1">{t('summary.with', { name: agentName })}</p>
+                    <h2 className="text-2xl font-bold text-fg">{t('summary.title')}</h2>
+                    <p className="text-fg-secondary text-sm mt-1">{t('summary.with', { name: agentName })}</p>
                 </div>
 
                 {/* Loading */}
@@ -116,7 +117,7 @@ export default function SessionSummary({ messages, agentName, agentColor, apiKey
                     <div className="text-center py-12">
                         <div className="w-8 h-8 border-2 rounded-full animate-spin mx-auto mb-4"
                             style={{ borderColor: `${agentColor}40`, borderTopColor: agentColor }} />
-                        <p className="text-gray-400 text-sm">{t('summary.generating')}</p>
+                        <p className="text-fg-secondary text-sm">{t('summary.generating')}</p>
                     </div>
                 )}
 
@@ -128,7 +129,7 @@ export default function SessionSummary({ messages, agentName, agentColor, apiKey
                         </div>
                         <button
                             onClick={generateSummary}
-                            className="text-sm px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+                            className="text-sm px-4 py-2 rounded-full bg-fg/10 hover:bg-fg/15 text-fg transition-colors"
                         >
                             {t('summary.retry')}
                         </button>
@@ -139,13 +140,13 @@ export default function SessionSummary({ messages, agentName, agentColor, apiKey
                 {summary && (
                     <div className="flex flex-col gap-4">
                         {parseSections(summary).map((section, i) => (
-                            <div key={i} className="rounded-xl p-5 bg-white/[0.03] border border-white/[0.06]">
+                            <div key={i} className="rounded-xl p-5 bg-fg/3 border border-fg/6">
                                 <h3 className="text-sm font-semibold uppercase tracking-wider mb-3 flex items-center gap-2"
                                     style={{ color: agentColor }}>
                                     <span>{sectionEmojis[section.title] || '•'}</span>
                                     {section.title}
                                 </h3>
-                                <div className="text-gray-300 text-sm leading-relaxed whitespace-pre-line">
+                                <div className="font-ai text-fg/80 text-sm leading-relaxed whitespace-pre-line">
                                     {section.body}
                                 </div>
                             </div>
@@ -155,7 +156,7 @@ export default function SessionSummary({ messages, agentName, agentColor, apiKey
 
                 {/* Emotion Timeline */}
                 {emotionHistory && emotionHistory.length >= 2 && (
-                    <div className="rounded-xl p-5 bg-white/[0.03] border border-white/[0.06] mt-4">
+                    <div className="rounded-xl p-5 bg-fg/3 border border-fg/6 mt-4">
                         <EmotionTimeline emotionHistory={emotionHistory} agentColor={agentColor} />
                     </div>
                 )}
@@ -196,12 +197,13 @@ export default function SessionSummary({ messages, agentName, agentColor, apiKey
                     <div className="flex items-center justify-center">
                         <button
                             onClick={onClose}
-                            className="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors"
+                            className="px-5 py-2.5 rounded-full bg-fg/10 hover:bg-fg/15 text-fg text-sm font-medium transition-colors"
                         >
                             {t('summary.backHome')}
                         </button>
                     </div>
                 </div>
+            </div>
             </div>
         </div>
     );

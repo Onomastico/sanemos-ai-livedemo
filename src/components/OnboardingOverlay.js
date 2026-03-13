@@ -29,12 +29,12 @@ export default function OnboardingOverlay({ onClose }) {
     return (
         <div className="fixed inset-0 z-[80] flex items-center justify-center" onClick={onClose}>
             {/* Backdrop */}
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+            <div className="absolute inset-0 bg-(--overlay) backdrop-blur-sm" />
 
             {/* Card */}
             <div
-                className="relative w-full max-w-sm mx-4 rounded-2xl border border-white/10 overflow-hidden"
-                style={{ background: 'rgba(15, 15, 20, 0.95)' }}
+                className="relative w-full max-w-sm mx-4 rounded-2xl border border-fg/8 overflow-hidden"
+                style={{ background: 'var(--surface-alpha)' }}
                 onClick={e => e.stopPropagation()}
             >
                 {/* Step indicator dots */}
@@ -44,7 +44,7 @@ export default function OnboardingOverlay({ onClose }) {
                             key={i}
                             className="w-2 h-2 rounded-full transition-all duration-300"
                             style={{
-                                backgroundColor: i === step ? '#fff' : 'rgba(255,255,255,0.15)',
+                                backgroundColor: i === step ? 'var(--fg)' : 'var(--fg-alpha-15)',
                                 transform: i === step ? 'scale(1.3)' : 'scale(1)'
                             }}
                         />
@@ -54,10 +54,10 @@ export default function OnboardingOverlay({ onClose }) {
                 {/* Content */}
                 <div className="px-6 py-8 text-center">
                     <div className="text-5xl mb-4">{current.emoji}</div>
-                    <h3 className="text-xl font-bold text-white mb-2">
+                    <h3 className="text-xl font-bold text-fg mb-2">
                         {t(`onboarding.step${current.key}Title`)}
                     </h3>
-                    <p className="text-gray-400 text-sm leading-relaxed">
+                    <p className="text-fg-secondary text-sm leading-relaxed">
                         {t(`onboarding.step${current.key}`)}
                     </p>
                 </div>
@@ -66,13 +66,13 @@ export default function OnboardingOverlay({ onClose }) {
                 <div className="px-6 pb-6 flex gap-3">
                     <button
                         onClick={onClose}
-                        className="flex-1 py-2.5 rounded-full text-sm font-medium text-gray-500 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                        className="flex-1 py-2.5 rounded-full text-sm font-medium text-fg-secondary bg-fg/5 border border-fg/8 hover:bg-fg/10 transition-colors"
                     >
                         {t('onboarding.skip')}
                     </button>
                     <button
                         onClick={handleNext}
-                        className="flex-1 py-2.5 rounded-full text-sm font-medium text-black bg-white hover:bg-gray-200 transition-colors"
+                        className="flex-1 py-2.5 rounded-full text-sm font-medium text-bg bg-linear-to-r from-accent to-accent-calm hover:opacity-90 transition-opacity"
                     >
                         {isLast ? t('onboarding.start') : t('onboarding.next')}
                     </button>

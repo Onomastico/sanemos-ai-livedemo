@@ -114,11 +114,11 @@ export default function BreathingVisualizer({ exercise, agentColor, onComplete }
                     }}
                 >
                     <div className="text-center">
-                        <p className={`font-medium text-white ${done ? 'text-sm' : 'text-lg'}`}>
+                        <p className={`font-medium text-fg ${done ? 'text-sm' : 'text-lg'}`}>
                             {PHASE_LABELS[phase]}
                         </p>
                         {!done && phase !== 'rest' && (
-                            <p className="text-xs text-gray-400 mt-1">{currentDuration}s</p>
+                            <p className="text-xs text-fg-secondary mt-1">{currentDuration}s</p>
                         )}
                         {done && (
                             <button
@@ -135,7 +135,7 @@ export default function BreathingVisualizer({ exercise, agentColor, onComplete }
 
             {/* Cycle counter */}
             <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-fg-secondary">
                     {done ? t('breathing.completed') : t('breathing.cycleOf', { current: currentCycle, total: cycles })}
                 </span>
                 <div className="flex gap-1">
@@ -144,7 +144,7 @@ export default function BreathingVisualizer({ exercise, agentColor, onComplete }
                             key={i}
                             className="w-1.5 h-1.5 rounded-full transition-colors duration-300"
                             style={{
-                                backgroundColor: i < currentCycle ? agentColor : 'rgba(255,255,255,0.15)'
+                                backgroundColor: i < currentCycle ? agentColor : 'var(--fg-alpha-15)'
                             }}
                         />
                     ))}
@@ -152,7 +152,7 @@ export default function BreathingVisualizer({ exercise, agentColor, onComplete }
             </div>
 
             {/* Exercise type label */}
-            <span className="text-[10px] text-gray-600 uppercase tracking-wider">
+            <span className="text-[10px] text-fg-secondary/60 uppercase tracking-wider">
                 {exercise.type === 'box' ? t('breathing.boxBreathing') : exercise.type === '478' ? t('breathing.technique478') : t('breathing.simpleBreathing')}
             </span>
         </div>

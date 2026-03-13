@@ -1,32 +1,131 @@
 @import "tailwindcss";
 
+/* ── Theme color tokens ──────────────────────────── */
+@theme {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-fg: var(--fg);
+  --color-fg-secondary: var(--fg-secondary);
+  --color-accent: var(--accent);
+  --color-accent-calm: var(--accent-calm);
+}
+
 @layer base {
   :root {
-    --background: #F8FAF9;
-    --foreground: #2D4F4D;
+    /* Default fallback (dark) */
+    --bg: #121B1A;
+    --surface: #1A2625;
+    --fg: #E0EAE9;
+    --fg-secondary: #8FA8A6;
+    --accent: #9CCF6A;
+    --accent-calm: #5FB7A6;
+    --border: rgba(224, 234, 233, 0.08);
+    --overlay: rgba(18, 27, 26, 0.7);
+    --surface-alpha: rgba(26, 38, 37, 0.95);
+    --fg-alpha-3: rgba(224, 234, 233, 0.03);
+    --fg-alpha-4: rgba(224, 234, 233, 0.04);
+    --fg-alpha-5: rgba(224, 234, 233, 0.05);
+    --fg-alpha-6: rgba(224, 234, 233, 0.06);
+    --fg-alpha-8: rgba(224, 234, 233, 0.08);
+    --fg-alpha-10: rgba(224, 234, 233, 0.10);
+    --fg-alpha-15: rgba(224, 234, 233, 0.15);
+    --fg-alpha-20: rgba(224, 234, 233, 0.20);
+    --accent-alpha-6: rgba(156, 207, 106, 0.06);
+    --accent-alpha-8: rgba(156, 207, 106, 0.08);
+    --accent-alpha-10: rgba(156, 207, 106, 0.10);
+    --accent-alpha-15: rgba(156, 207, 106, 0.15);
+    --accent-alpha-20: rgba(156, 207, 106, 0.20);
+    --accent-alpha-30: rgba(156, 207, 106, 0.30);
+    --accent-alpha-40: rgba(156, 207, 106, 0.40);
+    --accent-calm-alpha-8: rgba(95, 183, 166, 0.08);
+    --accent-calm-alpha-10: rgba(95, 183, 166, 0.10);
+    --bg-alpha-40: rgba(18, 27, 26, 0.40);
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --background: #121B1A;
-      --foreground: #E0EAE9;
-    }
+  .dark {
+    --bg: #121B1A;
+    --surface: #1A2625;
+    --fg: #E0EAE9;
+    --fg-secondary: #8FA8A6;
+    --accent: #9CCF6A;
+    --accent-calm: #5FB7A6;
+    --border: rgba(224, 234, 233, 0.08);
+    --overlay: rgba(18, 27, 26, 0.7);
+    --surface-alpha: rgba(26, 38, 37, 0.95);
+    --fg-alpha-3: rgba(224, 234, 233, 0.03);
+    --fg-alpha-4: rgba(224, 234, 233, 0.04);
+    --fg-alpha-5: rgba(224, 234, 233, 0.05);
+    --fg-alpha-6: rgba(224, 234, 233, 0.06);
+    --fg-alpha-8: rgba(224, 234, 233, 0.08);
+    --fg-alpha-10: rgba(224, 234, 233, 0.10);
+    --fg-alpha-15: rgba(224, 234, 233, 0.15);
+    --fg-alpha-20: rgba(224, 234, 233, 0.20);
+    --accent-alpha-6: rgba(156, 207, 106, 0.06);
+    --accent-alpha-8: rgba(156, 207, 106, 0.08);
+    --accent-alpha-10: rgba(156, 207, 106, 0.10);
+    --accent-alpha-15: rgba(156, 207, 106, 0.15);
+    --accent-alpha-20: rgba(156, 207, 106, 0.20);
+    --accent-alpha-30: rgba(156, 207, 106, 0.30);
+    --accent-alpha-40: rgba(156, 207, 106, 0.40);
+    --accent-calm-alpha-8: rgba(95, 183, 166, 0.08);
+    --accent-calm-alpha-10: rgba(95, 183, 166, 0.10);
+    --bg-alpha-40: rgba(18, 27, 26, 0.40);
+  }
+
+  .light {
+    --bg: #F5F7F2;
+    --surface: #FFFFFF;
+    --fg: #1A2625;
+    --fg-secondary: #5A6B69;
+    --accent: #7BB54A;
+    --accent-calm: #4A9A87;
+    --border: rgba(26, 38, 37, 0.1);
+    --overlay: rgba(26, 38, 37, 0.5);
+    --surface-alpha: rgba(255, 255, 255, 0.95);
+    --fg-alpha-3: rgba(26, 38, 37, 0.03);
+    --fg-alpha-4: rgba(26, 38, 37, 0.04);
+    --fg-alpha-5: rgba(26, 38, 37, 0.05);
+    --fg-alpha-6: rgba(26, 38, 37, 0.06);
+    --fg-alpha-8: rgba(26, 38, 37, 0.08);
+    --fg-alpha-10: rgba(26, 38, 37, 0.10);
+    --fg-alpha-15: rgba(26, 38, 37, 0.15);
+    --fg-alpha-20: rgba(26, 38, 37, 0.20);
+    --accent-alpha-6: rgba(123, 181, 74, 0.06);
+    --accent-alpha-8: rgba(123, 181, 74, 0.08);
+    --accent-alpha-10: rgba(123, 181, 74, 0.10);
+    --accent-alpha-15: rgba(123, 181, 74, 0.15);
+    --accent-alpha-20: rgba(123, 181, 74, 0.20);
+    --accent-alpha-30: rgba(123, 181, 74, 0.30);
+    --accent-alpha-40: rgba(123, 181, 74, 0.40);
+    --accent-calm-alpha-8: rgba(74, 154, 135, 0.08);
+    --accent-calm-alpha-10: rgba(74, 154, 135, 0.10);
+    --bg-alpha-40: rgba(245, 247, 242, 0.40);
   }
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  font-family: var(--font-body), 'Inter', 'Plus Jakarta Sans', sans-serif;
   overflow-x: hidden;
 }
 
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading), 'Plus Jakarta Sans', sans-serif;
+}
+
+/* AI / poetic text — used for agent quotes and generated summaries */
+.font-ai {
+  font-family: var(--font-ai), 'Lora', Georgia, serif;
+  font-style: italic;
+}
+
 .glass-card {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-alpha);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.15);
 }
 
 .ambient-glow {
@@ -34,6 +133,15 @@ body {
 }
 
 .ambient-glow:hover {
-  box-shadow: 0 0 40px var(--agent-color, rgba(255, 255, 255, 0.2));
+  box-shadow: 0 0 40px var(--agent-color, rgba(156, 207, 106, 0.2));
   transform: translateY(-4px);
+}
+
+/* Fade-in animation for toasts */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
 }

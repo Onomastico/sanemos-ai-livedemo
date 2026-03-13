@@ -1,70 +1,59 @@
 "use client";
 
 import { useState } from 'react';
-import { I18nProvider } from '@/i18n/I18nContext';
+import { I18nProvider, useI18n } from '@/i18n/I18nContext';
+import { ThemeProvider } from '@/theme/ThemeContext';
+import LanguageToggle from '@/components/LanguageToggle';
+import ThemeToggle from '@/components/ThemeToggle';
 
 /* ------------------------------------------------------------------ */
 /*  Data                                                               */
 /* ------------------------------------------------------------------ */
 
 const AGENTS = [
-  { id: 'sofia',  name: 'Sofía',  role: 'Welcome & Routing',   color: '#5FB7A6', emoji: '\uD83D\uDC4B', isReceptionist: true },
-  { id: 'luna',   name: 'Luna',   role: 'Empathic Listening',  color: '#7B8FD4', emoji: '\uD83C\uDF19' },
-  { id: 'marco',  name: 'Marco',  role: 'Grief Guide',         color: '#6B9E8A', emoji: '\uD83E\uDDED' },
-  { id: 'serena', name: 'Serena', role: 'Mindfulness',         color: '#D4A574', emoji: '\uD83E\uDDD8' },
-  { id: 'alma',   name: 'Alma',   role: 'Stories & Meaning',   color: '#C47D8A', emoji: '\uD83D\uDCD6' },
-  { id: 'faro',   name: 'Faro',   role: 'Crisis Support',      color: '#E85D75', emoji: '\uD83D\uDEA8' },
-  { id: 'nora',   name: 'Nora',   role: 'Pet Loss',            color: '#C9956C', emoji: '\uD83D\uDC3E' },
-  { id: 'iris',   name: 'Iris',   role: 'Separation',          color: '#9D7BA8', emoji: '\uD83E\uDE77' },
+  { id: 'sofia',  name: 'Sofía',  roleKey: 'arch.agentSofia',  color: '#5FB7A6', emoji: '👋', isReceptionist: true },
+  { id: 'luna',   name: 'Luna',   roleKey: 'arch.agentLuna',   color: '#7B8FD4', emoji: '🌙' },
+  { id: 'marco',  name: 'Marco',  roleKey: 'arch.agentMarco',  color: '#6B9E8A', emoji: '🧭' },
+  { id: 'serena', name: 'Serena', roleKey: 'arch.agentSerena', color: '#D4A574', emoji: '🧘' },
+  { id: 'alma',   name: 'Alma',   roleKey: 'arch.agentAlma',   color: '#C47D8A', emoji: '📖' },
+  { id: 'nora',   name: 'Nora',   roleKey: 'arch.agentNora',   color: '#C9956C', emoji: '🐾' },
+  { id: 'iris',   name: 'Iris',   roleKey: 'arch.agentIris',   color: '#9D7BA8', emoji: '🩷' },
+  { id: 'faro',   name: 'Faro',   roleKey: 'arch.agentFaro',   color: '#E85D75', emoji: '🚨' },
 ];
 
 const TOOL_GROUPS = [
   {
-    title: 'Emotion Tools',
+    titleKey: 'arch.toolsEmotion',
     color: '#F59E0B',
     tools: ['report_text_emotion', 'report_voice_emotion', 'report_facial_emotion'],
-    notes: 'Excluded for Sofía (receptionist)',
+    notesKey: 'arch.toolsEmotionNote',
   },
   {
-    title: 'Session Tools',
+    titleKey: 'arch.toolsSession',
     color: '#3B82F6',
     tools: ['end_session', 'switch_agent', 'escalate_to_crisis_faro'],
   },
   {
-    title: 'UI Tools',
+    titleKey: 'arch.toolsUI',
     color: '#8B5CF6',
     tools: ['generate_social_post', 'copy_to_clipboard', 'open_url', 'dismiss_modal'],
   },
   {
-    title: 'Serena-only',
+    titleKey: 'arch.toolsSerena',
     color: '#D4A574',
     tools: ['start_breathing_exercise', 'stop_breathing_exercise'],
   },
   {
-    title: 'Diary & Therapist',
+    titleKey: 'arch.toolsDiary',
     color: '#EC4899',
-    tools: ['save_diary_entry', 'send_to_therapist', 'schedule_appointment'],
-    notes: 'Excluded for Faro',
+    tools: ['save_diary_entry', 'send_to_therapist', 'schedule_appointment', 'show_diary', 'show_appointments'],
+    notesKey: 'arch.toolsDiaryNote',
   },
   {
-    title: 'Sofía-only',
+    titleKey: 'arch.toolsSofia',
     color: '#5FB7A6',
     tools: ['mark_onboarding_done'],
   },
-];
-
-const FEATURES = [
-  'Real-time emotion tracking (text + voice + facial)',
-  'Crisis detection & automatic escalation to Faro',
-  'Voice-based agent switching',
-  'Receptionist bot (Sofía) with onboarding & routing',
-  'Personal Diary with localStorage persistence',
-  'Therapist integration & appointment scheduling',
-  'Social media post generation',
-  'Breathing exercise visualization',
-  'Session summary with AI recap',
-  'PII masking on transcripts',
-  'Internationalization (ES / EN)',
 ];
 
 /* ------------------------------------------------------------------ */
@@ -82,9 +71,9 @@ function Tooltip({ text, children }) {
     >
       {children}
       {show && (
-        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 rounded-lg bg-gray-900 border border-white/20 text-xs text-gray-200 whitespace-nowrap shadow-xl pointer-events-none">
+        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 rounded-lg bg-surface border border-border text-xs text-fg-secondary whitespace-nowrap shadow-xl pointer-events-none">
           {text}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px w-2 h-2 rotate-45 bg-gray-900 border-r border-b border-white/20" />
+          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px w-2 h-2 rotate-45 bg-surface border-r border-b border-border" />
         </div>
       )}
     </div>
@@ -95,20 +84,15 @@ function Tooltip({ text, children }) {
 /*  Animated dashed connector (vertical)                               */
 /* ------------------------------------------------------------------ */
 
-function DashedArrowDown({ label, className = '' }) {
+function DashedArrowDown() {
   return (
-    <div className={`flex flex-col items-center ${className}`}>
+    <div className="flex flex-col items-center">
       <svg width="2" height="48" className="my-1">
         <line
           x1="1" y1="0" x2="1" y2="48"
-          stroke="#555" strokeWidth="2" strokeDasharray="6 4"
+          stroke="var(--fg-secondary)" strokeWidth="2" strokeDasharray="6 4"
         />
       </svg>
-      {label && (
-        <span className="text-[10px] text-gray-500 -mt-7 bg-black/80 px-1 rounded">
-          {label}
-        </span>
-      )}
     </div>
   );
 }
@@ -118,33 +102,29 @@ function DashedArrowDown({ label, className = '' }) {
 /* ------------------------------------------------------------------ */
 
 function WebSocketArrow() {
+  const { t } = useI18n();
   return (
     <div className="flex flex-col items-center justify-center px-2 sm:px-4 shrink-0 gap-1 self-center">
-      {/* Arrow body */}
       <svg
         viewBox="0 0 180 48"
-        className="w-[100px] sm:w-[160px] md:w-[180px]"
+        className="w-25 sm:w-40 md:w-45"
         fill="none"
       >
-        {/* Top arrow (right) */}
-        <line x1="0" y1="16" x2="150" y2="16" stroke="#9CCF6A" strokeWidth="2" strokeDasharray="8 4">
+        <line x1="0" y1="16" x2="150" y2="16" stroke="var(--accent)" strokeWidth="2" strokeDasharray="8 4">
           <animate attributeName="stroke-dashoffset" from="0" to="-24" dur="1.5s" repeatCount="indefinite" />
         </line>
-        <polygon points="150,10 166,16 150,22" fill="#9CCF6A" />
-
-        {/* Bottom arrow (left) */}
-        <line x1="166" y1="32" x2="16" y2="32" stroke="#5FB7A6" strokeWidth="2" strokeDasharray="8 4">
+        <polygon points="150,10 166,16 150,22" fill="var(--accent)" />
+        <line x1="166" y1="32" x2="16" y2="32" stroke="var(--accent-calm)" strokeWidth="2" strokeDasharray="8 4">
           <animate attributeName="stroke-dashoffset" from="0" to="24" dur="1.5s" repeatCount="indefinite" />
         </line>
-        <polygon points="16,26 0,32 16,38" fill="#5FB7A6" />
+        <polygon points="16,26 0,32 16,38" fill="var(--accent-calm)" />
       </svg>
-
       <div className="text-center leading-tight">
-        <p className="text-[10px] sm:text-xs text-gray-400 font-mono break-all max-w-[160px]">
+        <p className="text-[10px] sm:text-xs text-fg-secondary font-mono break-all max-w-40">
           wss://generativelanguage .googleapis.com/ws/...
         </p>
-        <p className="text-[9px] text-gray-500 mt-0.5">
-          Binary audio + JSON control
+        <p className="text-[9px] text-fg-secondary/60 mt-0.5">
+          {t('arch.wsDescription')}
         </p>
       </div>
     </div>
@@ -186,75 +166,99 @@ function SectionCard({ title, color, glow, children, className = '' }) {
 /* ------------------------------------------------------------------ */
 
 function ArchitectureContent() {
+  const { t } = useI18n();
+
+  const FEATURES = [
+    t('arch.feat1'),
+    t('arch.feat2'),
+    t('arch.feat3'),
+    t('arch.feat4'),
+    t('arch.feat5'),
+    t('arch.feat6'),
+    t('arch.feat7'),
+    t('arch.feat8'),
+    t('arch.feat9'),
+    t('arch.feat10'),
+    t('arch.feat11'),
+    t('arch.feat12'),
+    t('arch.feat13'),
+  ];
+
   return (
-    <main className="min-h-screen bg-black text-white relative overflow-hidden">
+    <main className="min-h-screen bg-bg text-fg relative overflow-hidden">
       {/* Background blobs */}
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-900/10 blur-[120px] rounded-full pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-[#7B8FD4]/10 blur-[150px] rounded-full pointer-events-none" />
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full pointer-events-none" style={{ background: 'var(--accent-calm)', opacity: 0.04, filter: 'blur(120px)' }} />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full pointer-events-none" style={{ background: '#7B8FD4', opacity: 0.04, filter: 'blur(150px)' }} />
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-8 py-8 sm:py-12">
-        {/* Navigation */}
-        <a
-          href="/"
-          className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors mb-8 group"
-        >
-          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          <span className="group-hover:underline">Back to Home</span>
-        </a>
+        {/* Navigation + toggles */}
+        <div className="flex items-center justify-between mb-8">
+          <a
+            href="/"
+            className="inline-flex items-center gap-2 text-sm text-fg-secondary hover:text-fg transition-colors group"
+          >
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            <span className="group-hover:underline">{t('arch.backHome')}</span>
+          </a>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <LanguageToggle />
+          </div>
+        </div>
 
         {/* Title */}
         <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight mb-2">
-          System Architecture{' '}
-          <span className="bg-gradient-to-r from-[#9CCF6A] to-[#5FB7A6] text-transparent bg-clip-text">
+          {t('arch.title')}{' '}
+          <span className="bg-linear-to-r from-accent to-accent-calm text-transparent bg-clip-text">
             Sanemos AI Live
           </span>
         </h1>
-        <p className="text-gray-400 text-sm sm:text-base mb-10 max-w-2xl">
-          Gemini Live Agent Challenge &mdash; real-time multimodal grief support powered by 7 specialized AI agents.
+        <p className="text-fg-secondary text-sm sm:text-base mb-10 max-w-2xl">
+          {t('arch.subtitle')}
         </p>
 
         {/* ============================================================ */}
         {/*  Row 1: Client  <--->  Gemini API                            */}
         {/* ============================================================ */}
-        <div className="flex flex-col lg:flex-row items-stretch gap-0 lg:gap-0 mb-4">
+        <div className="flex flex-col lg:flex-row items-stretch gap-0 mb-4">
           {/* CLIENT */}
           <SectionCard
-            title="Client Browser"
-            color="#9CCF6A"
+            title={t('arch.clientTitle')}
+            color="var(--accent)"
             glow
             className="flex-1 min-w-0"
           >
-            <ul className="space-y-3 text-sm text-gray-300">
-              <Tooltip text="React 18+ with App Router, server/client components">
+            <ul className="space-y-3 text-sm text-fg-secondary">
+              <Tooltip text={t('arch.clientNextTooltip')}>
                 <li className="flex items-start gap-2">
-                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-[#9CCF6A]" />
-                  <span><strong className="text-white">Next.js App</strong> &mdash; React front-end, App Router</span>
+                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-accent" />
+                  <span><strong className="text-fg">Next.js 16</strong> &mdash; {t('arch.clientNext')}</span>
                 </li>
               </Tooltip>
-              <Tooltip text="Web Audio API, getUserMedia, 16 kHz mono PCM16 encoding">
+              <Tooltip text={t('arch.clientAudioCapTooltip')}>
                 <li className="flex items-start gap-2">
-                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-[#9CCF6A]" />
-                  <span><strong className="text-white">Audio Capture</strong> &mdash; 16 kHz PCM via Web Audio API</span>
+                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-accent" />
+                  <span><strong className="text-fg">{t('arch.clientAudioCap')}</strong> &mdash; 16 kHz PCM via Web Audio API</span>
                 </li>
               </Tooltip>
-              <Tooltip text="Dedicated 24 kHz AudioContext with gapless scheduled playback">
+              <Tooltip text={t('arch.clientAudioPlayTooltip')}>
                 <li className="flex items-start gap-2">
-                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-[#9CCF6A]" />
-                  <span><strong className="text-white">Audio Playback</strong> &mdash; 24 kHz, gapless scheduling</span>
+                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-accent" />
+                  <span><strong className="text-fg">{t('arch.clientAudioPlay')}</strong> &mdash; 24 kHz, gapless scheduling</span>
                 </li>
               </Tooltip>
-              <Tooltip text="Optional camera feed analyzed for facial emotion via Gemini vision">
+              <Tooltip text={t('arch.clientCamTooltip')}>
                 <li className="flex items-start gap-2">
-                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-[#9CCF6A]" />
-                  <span><strong className="text-white">Camera Feed</strong> &mdash; optional facial emotion input</span>
+                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-accent" />
+                  <span><strong className="text-fg">{t('arch.clientCam')}</strong> &mdash; {t('arch.clientCamDesc')}</span>
                 </li>
               </Tooltip>
-              <Tooltip text="Client-side regex masking for names, emails, phones, SSNs before transcript storage">
+              <Tooltip text={t('arch.clientPiiTooltip')}>
                 <li className="flex items-start gap-2">
-                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-[#9CCF6A]" />
-                  <span><strong className="text-white">PII Scrubber</strong> &mdash; client-side regex masking</span>
+                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-accent" />
+                  <span><strong className="text-fg">PII Scrubber</strong> &mdash; {t('arch.clientPiiDesc')}</span>
                 </li>
               </Tooltip>
             </ul>
@@ -266,39 +270,39 @@ function ArchitectureContent() {
           {/* GEMINI API */}
           <SectionCard
             title="Gemini Multimodal Live API"
-            color="#5FB7A6"
+            color="var(--accent-calm)"
             glow
             className="flex-1 min-w-0"
           >
-            <ul className="space-y-3 text-sm text-gray-300">
-              <Tooltip text="Latest native audio model with real-time voice I/O">
+            <ul className="space-y-3 text-sm text-fg-secondary">
+              <Tooltip text={t('arch.geminiModelTooltip')}>
                 <li className="flex items-start gap-2">
-                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-[#5FB7A6]" />
-                  <span><strong className="text-white">Model</strong> &mdash; gemini-2.5-flash-native-audio-preview</span>
+                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-accent-calm" />
+                  <span><strong className="text-fg">{t('arch.geminiModel')}</strong> &mdash; gemini-2.5-flash-native-audio</span>
                 </li>
               </Tooltip>
-              <Tooltip text="Bidirectional streaming: audio in, audio out, no intermediate TTS/STT">
+              <Tooltip text={t('arch.geminiVoiceTooltip')}>
                 <li className="flex items-start gap-2">
-                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-[#5FB7A6]" />
-                  <span><strong className="text-white">Real-time Voice</strong> &mdash; voice-to-voice streaming</span>
+                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-accent-calm" />
+                  <span><strong className="text-fg">{t('arch.geminiVoice')}</strong> &mdash; {t('arch.geminiVoiceDesc')}</span>
                 </li>
               </Tooltip>
-              <Tooltip text="inputAudioTranscription + outputAudioTranscription at setup root level (camelCase)">
+              <Tooltip text={t('arch.geminiTransTooltip')}>
                 <li className="flex items-start gap-2">
-                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-[#5FB7A6]" />
-                  <span><strong className="text-white">Transcription</strong> &mdash; input &amp; output audio transcription</span>
+                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-accent-calm" />
+                  <span><strong className="text-fg">{t('arch.geminiTrans')}</strong> &mdash; {t('arch.geminiTransDesc')}</span>
                 </li>
               </Tooltip>
-              <Tooltip text="Function calling via tools declarations in setup; JSON responses trigger client actions">
+              <Tooltip text={t('arch.geminiFuncTooltip')}>
                 <li className="flex items-start gap-2">
-                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-[#5FB7A6]" />
-                  <span><strong className="text-white">Function Calling</strong> &mdash; tool declarations &amp; invocations</span>
+                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-accent-calm" />
+                  <span><strong className="text-fg">Function Calling</strong> &mdash; {t('arch.geminiFuncDesc')}</span>
                 </li>
               </Tooltip>
-              <Tooltip text="System instructions define each agent's persona, behavior, and available tools">
+              <Tooltip text={t('arch.geminiSysTooltip')}>
                 <li className="flex items-start gap-2">
-                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-[#5FB7A6]" />
-                  <span><strong className="text-white">System Instructions</strong> &mdash; per-agent persona config</span>
+                  <span className="shrink-0 mt-0.5 w-2 h-2 rounded-full bg-accent-calm" />
+                  <span><strong className="text-fg">System Instructions</strong> &mdash; {t('arch.geminiSysDesc')}</span>
                 </li>
               </Tooltip>
             </ul>
@@ -313,10 +317,10 @@ function ArchitectureContent() {
         {/* ============================================================ */}
         {/*  Row 2: Agents                                               */}
         {/* ============================================================ */}
-        <SectionCard title="7 AI Agents" color="#C47D8A" className="mb-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
+        <SectionCard title={t('arch.agentsTitle')} color="#C47D8A" className="mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
             {AGENTS.map((a) => (
-              <Tooltip key={a.id} text={a.role}>
+              <Tooltip key={a.id} text={t(a.roleKey)}>
                 <div
                   className="rounded-xl border p-3 text-center transition-all duration-200 hover:scale-105 cursor-default"
                   style={{
@@ -328,8 +332,8 @@ function ArchitectureContent() {
                   <div className="font-bold text-sm" style={{ color: a.color }}>
                     {a.name}
                   </div>
-                  <div className="text-[10px] text-gray-400 mt-0.5 leading-tight">
-                    {a.role}
+                  <div className="text-[10px] text-fg-secondary mt-0.5 leading-tight">
+                    {t(a.roleKey)}
                   </div>
                 </div>
               </Tooltip>
@@ -347,30 +351,30 @@ function ArchitectureContent() {
         {/* ============================================================ */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Tool System — 2/3 width */}
-          <SectionCard title="Tool System" color="#F59E0B" className="lg:col-span-2">
+          <SectionCard title={t('arch.toolsTitle')} color="#F59E0B" className="lg:col-span-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {TOOL_GROUPS.map((g) => (
-                <div key={g.title}>
+                <div key={g.titleKey}>
                   <h4
                     className="text-xs font-semibold uppercase tracking-wider mb-2"
                     style={{ color: g.color }}
                   >
-                    {g.title}
+                    {t(g.titleKey)}
                   </h4>
                   <ul className="space-y-1">
-                    {g.tools.map((t) => (
-                      <li key={t} className="text-xs text-gray-400 font-mono flex items-center gap-1.5">
+                    {g.tools.map((tool) => (
+                      <li key={tool} className="text-xs text-fg-secondary font-mono flex items-center gap-1.5">
                         <span
                           className="w-1.5 h-1.5 rounded-full shrink-0"
                           style={{ backgroundColor: g.color }}
                         />
-                        {t}
+                        {tool}
                       </li>
                     ))}
                   </ul>
-                  {g.notes && (
-                    <p className="text-[10px] text-gray-500 italic mt-2 border-t border-gray-700 pt-2">
-                      {g.notes}
+                  {g.notesKey && (
+                    <p className="text-[10px] text-fg-secondary/60 italic mt-2 border-t pt-2" style={{ borderColor: 'var(--border)' }}>
+                      {t(g.notesKey)}
                     </p>
                   )}
                 </div>
@@ -379,10 +383,10 @@ function ArchitectureContent() {
           </SectionCard>
 
           {/* Key Features — 1/3 width */}
-          <SectionCard title="Key Features" color="#A78BFA">
+          <SectionCard title={t('arch.featuresTitle')} color="#A78BFA">
             <ul className="space-y-2">
               {FEATURES.map((f, i) => (
-                <li key={i} className="flex items-start gap-2 text-xs text-gray-300">
+                <li key={i} className="flex items-start gap-2 text-xs text-fg-secondary">
                   <svg
                     className="shrink-0 mt-0.5 w-3.5 h-3.5 text-[#A78BFA]"
                     fill="none"
@@ -402,32 +406,32 @@ function ArchitectureContent() {
         {/* ============================================================ */}
         {/*  Data-flow legend                                            */}
         {/* ============================================================ */}
-        <div className="mt-10 rounded-2xl border border-white/10 bg-white/[0.02] p-5 sm:p-6">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500 mb-4">
-            Data Flow Summary
+        <div className="mt-10 rounded-2xl border p-5 sm:p-6" style={{ borderColor: 'var(--border)', background: 'var(--fg-alpha-3)' }}>
+          <h3 className="text-sm font-bold uppercase tracking-wider text-fg-secondary mb-4">
+            {t('arch.dataFlowTitle')}
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs text-gray-400">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs text-fg-secondary">
             <div className="flex items-start gap-2">
-              <span className="shrink-0 w-5 h-5 rounded-full bg-[#9CCF6A]/20 flex items-center justify-center text-[#9CCF6A] font-bold text-[10px]">1</span>
-              <span>User speaks or enables camera. Audio is captured at 16 kHz PCM and sent as binary frames over WebSocket.</span>
+              <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px]" style={{ background: 'var(--accent-alpha-20)', color: 'var(--accent)' }}>1</span>
+              <span>{t('arch.flow1')}</span>
             </div>
             <div className="flex items-start gap-2">
-              <span className="shrink-0 w-5 h-5 rounded-full bg-[#5FB7A6]/20 flex items-center justify-center text-[#5FB7A6] font-bold text-[10px]">2</span>
-              <span>Gemini processes audio in real time, generates voice response, and streams 24 kHz audio back with transcription.</span>
+              <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px]" style={{ background: 'var(--accent-calm-alpha-10)', color: 'var(--accent-calm)' }}>2</span>
+              <span>{t('arch.flow2')}</span>
             </div>
             <div className="flex items-start gap-2">
               <span className="shrink-0 w-5 h-5 rounded-full bg-[#F59E0B]/20 flex items-center justify-center text-[#F59E0B] font-bold text-[10px]">3</span>
-              <span>Gemini invokes tools (e.g., report_voice_emotion, switch_agent) via function calls. Client executes and responds.</span>
+              <span>{t('arch.flow3')}</span>
             </div>
             <div className="flex items-start gap-2">
               <span className="shrink-0 w-5 h-5 rounded-full bg-[#E85D75]/20 flex items-center justify-center text-[#E85D75] font-bold text-[10px]">4</span>
-              <span>If crisis is detected, Faro agent is activated. WebSocket reconnects with Faro&apos;s system instructions and context.</span>
+              <span>{t('arch.flow4')}</span>
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <footer className="mt-12 pb-8 text-center text-xs text-gray-600">
+        <footer className="mt-12 pb-8 text-center text-xs text-fg-secondary/50">
           Sanemos AI Live &mdash; Gemini Live Agent Challenge &mdash; Devpost 2025
         </footer>
       </div>
@@ -436,13 +440,15 @@ function ArchitectureContent() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Export with I18nProvider wrapper                                    */
+/*  Export with providers                                               */
 /* ------------------------------------------------------------------ */
 
 export default function ArchitecturePage() {
   return (
-    <I18nProvider>
-      <ArchitectureContent />
-    </I18nProvider>
+    <ThemeProvider>
+      <I18nProvider>
+        <ArchitectureContent />
+      </I18nProvider>
+    </ThemeProvider>
   );
 }

@@ -35,8 +35,8 @@ function SliderRow({ label, hint, value, min, max, step, format, onChange }) {
     return (
         <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-gray-300">{label}</span>
-                <span className="text-xs font-mono text-white/80 bg-white/10 px-2 py-0.5 rounded">
+                <span className="text-xs font-medium text-fg">{label}</span>
+                <span className="text-xs font-mono text-fg/80 bg-fg/10 px-2 py-0.5 rounded">
                     {format ? format(value) : value}
                 </span>
             </div>
@@ -47,10 +47,10 @@ function SliderRow({ label, hint, value, min, max, step, format, onChange }) {
                 step={step}
                 value={value}
                 onChange={e => onChange(parseFloat(e.target.value))}
-                className="w-full h-1.5 rounded-full appearance-none cursor-pointer accent-white/80"
-                style={{ background: `linear-gradient(to right, rgba(255,255,255,0.4) ${((value - min) / (max - min)) * 100}%, rgba(255,255,255,0.1) ${((value - min) / (max - min)) * 100}%)` }}
+                className="w-full h-1.5 rounded-full appearance-none cursor-pointer accent-accent"
+                style={{ background: `linear-gradient(to right, color-mix(in srgb, var(--accent) 50%, transparent) ${((value - min) / (max - min)) * 100}%, color-mix(in srgb, var(--fg) 10%, transparent) ${((value - min) / (max - min)) * 100}%)` }}
             />
-            <p className="text-[10px] text-gray-500 leading-tight">{hint}</p>
+            <p className="text-[10px] text-fg-secondary leading-tight">{hint}</p>
         </div>
     );
 }
@@ -82,16 +82,16 @@ export default function SettingsPanel({ settings, onChange }) {
 
     return (
         <div className="w-full max-w-2xl mx-auto">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
+            <div className="rounded-2xl border border-fg/8 bg-surface/60 backdrop-blur-sm overflow-hidden">
                 {/* Header */}
-                <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between">
+                <div className="px-5 py-4 border-b border-fg/6 flex items-center justify-between">
                     <div>
-                        <h3 className="text-sm font-bold text-white">{t('settings.title')}</h3>
-                        <p className="text-[10px] text-gray-500 mt-0.5">{t('settings.subtitle')}</p>
+                        <h3 className="text-sm font-bold text-fg">{t('settings.title')}</h3>
+                        <p className="text-[10px] text-fg-secondary mt-0.5">{t('settings.subtitle')}</p>
                     </div>
                     <button
                         onClick={resetDefaults}
-                        className="text-[10px] px-3 py-1 rounded-full border border-white/10 text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+                        className="text-[10px] px-3 py-1 rounded-full border border-fg/8 text-fg-secondary hover:text-fg hover:bg-fg/8 transition-colors"
                     >
                         {t('settings.resetDefaults')}
                     </button>
@@ -139,7 +139,7 @@ export default function SettingsPanel({ settings, onChange }) {
 
                     {/* Audio Buffer */}
                     <div className="space-y-1.5">
-                        <span className="text-xs font-medium text-gray-300">{t('settings.audioBuffer')}</span>
+                        <span className="text-xs font-medium text-fg">{t('settings.audioBuffer')}</span>
                         <div className="flex gap-2">
                             {[1024, 2048, 4096].map(size => (
                                 <button
@@ -147,47 +147,47 @@ export default function SettingsPanel({ settings, onChange }) {
                                     onClick={() => update('audioBufferSize', size)}
                                     className={`flex-1 py-1.5 rounded-lg text-xs font-mono transition-colors ${
                                         settings.audioBufferSize === size
-                                            ? 'bg-white/15 text-white border border-white/20'
-                                            : 'bg-white/5 text-gray-500 border border-white/5 hover:bg-white/10'
+                                            ? 'bg-fg/15 text-fg border border-fg/20'
+                                            : 'bg-fg/5 text-fg-secondary border border-fg/5 hover:bg-fg/10'
                                     }`}
                                 >
                                     {size}
                                 </button>
                             ))}
                         </div>
-                        <p className="text-[10px] text-gray-500 leading-tight">{t('settings.audioBufferHint')}</p>
+                        <p className="text-[10px] text-fg-secondary leading-tight">{t('settings.audioBufferHint')}</p>
                     </div>
 
                     {/* Transcription toggle */}
                     <div className="space-y-1.5">
-                        <span className="text-xs font-medium text-gray-300">{t('settings.transcription')}</span>
+                        <span className="text-xs font-medium text-fg">{t('settings.transcription')}</span>
                         <button
                             onClick={() => update('transcription', !settings.transcription)}
                             className={`w-full py-1.5 rounded-lg text-xs font-medium transition-colors ${
                                 settings.transcription
-                                    ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                                    : 'bg-white/5 text-gray-500 border border-white/5'
+                                    ? 'bg-accent/15 text-accent border border-accent/30'
+                                    : 'bg-fg/5 text-fg-secondary border border-fg/5'
                             }`}
                         >
                             {settings.transcription ? t('settings.on') : t('settings.off')}
                         </button>
-                        <p className="text-[10px] text-gray-500 leading-tight">{t('settings.transcriptionHint')}</p>
+                        <p className="text-[10px] text-fg-secondary leading-tight">{t('settings.transcriptionHint')}</p>
                     </div>
 
                     {/* PII Scrubbing toggle */}
                     <div className="space-y-1.5">
-                        <span className="text-xs font-medium text-gray-300">{t('settings.piiScrubbing')}</span>
+                        <span className="text-xs font-medium text-fg">{t('settings.piiScrubbing')}</span>
                         <button
                             onClick={() => update('piiScrubbing', !settings.piiScrubbing)}
                             className={`w-full py-1.5 rounded-lg text-xs font-medium transition-colors ${
                                 settings.piiScrubbing
-                                    ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                                    : 'bg-white/5 text-gray-500 border border-white/5'
+                                    ? 'bg-accent/15 text-accent border border-accent/30'
+                                    : 'bg-fg/5 text-fg-secondary border border-fg/5'
                             }`}
                         >
                             {settings.piiScrubbing ? t('settings.on') : t('settings.off')}
                         </button>
-                        <p className="text-[10px] text-gray-500 leading-tight">{t('settings.piiScrubbingHint')}</p>
+                        <p className="text-[10px] text-fg-secondary leading-tight">{t('settings.piiScrubbingHint')}</p>
                     </div>
 
                     {/* Video Interval */}
@@ -212,7 +212,7 @@ export default function SettingsPanel({ settings, onChange }) {
 
                     {/* Emotion Tools mode */}
                     <div className="space-y-1.5 sm:col-span-2">
-                        <span className="text-xs font-medium text-gray-300">{t('settings.emotionTools')}</span>
+                        <span className="text-xs font-medium text-fg">{t('settings.emotionTools')}</span>
                         <div className="flex gap-2">
                             {['unified', 'separate'].map(mode => (
                                 <button
@@ -220,30 +220,30 @@ export default function SettingsPanel({ settings, onChange }) {
                                     onClick={() => update('emotionToolMode', mode)}
                                     className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                                         settings.emotionToolMode === mode
-                                            ? 'bg-white/15 text-white border border-white/20'
-                                            : 'bg-white/5 text-gray-500 border border-white/5 hover:bg-white/10'
+                                            ? 'bg-fg/15 text-fg border border-fg/20'
+                                            : 'bg-fg/5 text-fg-secondary border border-fg/5 hover:bg-fg/10'
                                     }`}
                                 >
                                     {t(`settings.${mode}`)}
                                 </button>
                             ))}
                         </div>
-                        <p className="text-[10px] text-gray-500 leading-tight">{t('settings.emotionToolsHint')}</p>
+                        <p className="text-[10px] text-fg-secondary leading-tight">{t('settings.emotionToolsHint')}</p>
                     </div>
                 </div>
 
                 {/* Reset Demo */}
-                <div className="px-5 py-4 border-t border-white/[0.06] flex items-center justify-between">
+                <div className="px-5 py-4 border-t border-fg/6 flex items-center justify-between">
                     <div>
-                        <span className="text-xs font-medium text-gray-300">{t('settings.resetDemo')}</span>
-                        <p className="text-[10px] text-gray-500 mt-0.5">{t('settings.resetDemoHint')}</p>
+                        <span className="text-xs font-medium text-fg">{t('settings.resetDemo')}</span>
+                        <p className="text-[10px] text-fg-secondary mt-0.5">{t('settings.resetDemoHint')}</p>
                     </div>
                     <button
                         onClick={resetDemo}
                         className={`text-[10px] px-3 py-1 rounded-full border transition-colors shrink-0 ml-4 ${
                             demoReset
-                                ? 'bg-green-500/20 border-green-500/30 text-green-300'
-                                : 'border-white/10 text-gray-400 hover:text-white hover:bg-white/10'
+                                ? 'bg-accent/20 border-accent/30 text-accent'
+                                : 'border-fg/10 text-fg-secondary hover:text-fg hover:bg-fg/10'
                         }`}
                     >
                         {demoReset ? t('settings.resetDemoDone') : t('settings.resetDemo')}

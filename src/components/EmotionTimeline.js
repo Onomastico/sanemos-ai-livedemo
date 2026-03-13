@@ -60,7 +60,7 @@ export default function EmotionTimeline({ emotionHistory = [], agentColor = '#88
 
   if (!emotionHistory || emotionHistory.length < 2) {
     return (
-      <div style={{ textAlign: 'center', color: '#636E72', padding: '2rem', fontSize: '0.9rem' }}>
+      <div style={{ textAlign: 'center', color: 'var(--fg-secondary)', padding: '2rem', fontSize: '0.9rem' }}>
         {t('summary.notEnoughData') || 'Not enough emotion data'}
       </div>
     );
@@ -73,15 +73,15 @@ export default function EmotionTimeline({ emotionHistory = [], agentColor = '#88
 
   return (
     <div>
-      <h4 style={{ color: '#ccc', marginBottom: 8, fontSize: '0.85rem' }}>{t('summary.emotionTimeline')}</h4>
+      <h4 style={{ color: 'var(--fg)', marginBottom: 8, fontSize: '0.85rem' }}>{t('summary.emotionTimeline')}</h4>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ background: 'transparent' }}>
         {/* Grid lines */}
         {[1, 2, 3, 4, 5].map((v) => {
           const y = PAD.top + PLOT_H - ((v - 1) / 4) * PLOT_H;
           return (
             <g key={v}>
-              <line x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke="#333" strokeWidth={0.5} />
-              <text x={PAD.left - 6} y={y + 4} fill="#666" fontSize={9} textAnchor="end">{v}</text>
+              <line x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke="var(--fg-alpha-10)" strokeWidth={0.5} />
+              <text x={PAD.left - 6} y={y + 4} fill="var(--fg-secondary)" fontSize={9} textAnchor="end">{v}</text>
             </g>
           );
         })}
@@ -91,7 +91,7 @@ export default function EmotionTimeline({ emotionHistory = [], agentColor = '#88
           const x = PAD.left + pct * PLOT_W;
           const ts = tMin + pct * (tMax - tMin);
           return (
-            <text key={pct} x={x} y={PAD.top + PLOT_H + 14} fill="#666" fontSize={8} textAnchor="middle">
+            <text key={pct} x={x} y={PAD.top + PLOT_H + 14} fill="var(--fg-secondary)" fontSize={8} textAnchor="middle">
               {fmtTime(ts)}
             </text>
           );
@@ -114,7 +114,7 @@ export default function EmotionTimeline({ emotionHistory = [], agentColor = '#88
       {/* Legend */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', marginTop: 6 }}>
         {emotions.map((em) => (
-          <span key={em} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.7rem', color: '#aaa' }}>
+          <span key={em} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.7rem', color: 'var(--fg-secondary)' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: EMOTION_COLORS[em] || '#888', display: 'inline-block' }} />
             {(() => { const v = t(`emotions.${em}`); return (!v || v === `emotions.${em}`) ? em.charAt(0).toUpperCase() + em.slice(1) : v; })()}
           </span>

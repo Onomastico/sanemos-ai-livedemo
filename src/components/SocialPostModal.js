@@ -24,28 +24,28 @@ export default function SocialPostModal({ post, agentColor, onClose }) {
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={onClose}>
             {/* Backdrop */}
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <div className="absolute inset-0 bg-(--overlay) backdrop-blur-sm" />
 
             {/* Card */}
             <div
-                className="relative w-full max-w-md rounded-2xl border border-white/10 shadow-2xl overflow-hidden"
-                style={{ background: 'rgba(20, 20, 25, 0.95)' }}
+                className="relative w-full max-w-md rounded-2xl border border-fg/8 shadow-2xl overflow-hidden"
+                style={{ background: 'var(--surface-alpha)' }}
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-fg/6">
                     <div className="flex items-center gap-2.5">
                         <span className="text-xl">{platform.icon}</span>
                         <div>
-                            <h3 className="text-white text-sm font-semibold">{platform.label}</h3>
+                            <h3 className="text-fg text-sm font-semibold">{platform.label}</h3>
                             {post.occasion && (
-                                <p className="text-gray-500 text-[11px] capitalize">{post.occasion}</p>
+                                <p className="text-fg-secondary text-[11px] capitalize">{post.occasion}</p>
                             )}
                         </div>
                     </div>
                     <button
                         onClick={onClose}
-                        className="text-gray-500 hover:text-white transition-colors text-lg leading-none px-1"
+                        className="text-fg-secondary hover:text-fg transition-colors text-lg leading-none px-1"
                     >
                         &times;
                     </button>
@@ -53,13 +53,13 @@ export default function SocialPostModal({ post, agentColor, onClose }) {
 
                 {/* Post text */}
                 <div className="px-5 py-4 max-h-[50vh] overflow-y-auto">
-                    <p className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">
+                    <p className="text-fg/90 text-sm leading-relaxed whitespace-pre-wrap">
                         {post.post_text}
                     </p>
                 </div>
 
                 {/* Actions */}
-                <div className="px-5 py-4 border-t border-white/[0.06] flex gap-3">
+                <div className="px-5 py-4 border-t border-fg/6 flex gap-3">
                     <button
                         onClick={handleCopy}
                         className="flex-1 py-2.5 rounded-full text-sm font-medium transition-all"
@@ -73,7 +73,7 @@ export default function SocialPostModal({ post, agentColor, onClose }) {
                     </button>
                     <button
                         onClick={onClose}
-                        className="px-5 py-2.5 rounded-full text-sm font-medium text-gray-400 bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
+                        className="px-5 py-2.5 rounded-full text-sm font-medium text-fg-secondary bg-fg/5 border border-fg/8 hover:bg-fg/10 transition-all"
                     >
                         {t('social.close')}
                     </button>

@@ -86,7 +86,7 @@ Sanemos AI Live es una plataforma de acompañamiento emocional en duelo que util
 - Aplicación de PII masking a todo texto mostrado
 
 ### 4. Perfiles de Usuario Predefinidos (Context Cards)
-- 5 perfiles de demo: Orlando (Chile), Mary (México), Rodrigo (Argentina), Carmen (España), Sin contexto
+- 7 perfiles de demo: Orlando, Mary, Rodrigo, Carmen, Lucía (pet loss), Pablo (separación), Sin contexto
 - Detección automática de país por IP (ipapi.co) con fallback a `navigator.language`
 - El perfil seleccionado se inyecta como contexto en el `systemPrompt` del agente
 - Cada perfil tiene nombre, edad, situación de duelo específica, país y emoji
@@ -100,11 +100,11 @@ Sanemos AI Live es una plataforma de acompañamiento emocional en duelo que util
 - Cambio de mensajes de status: "Estoy aquí contigo..." en lugar de "Esperando..."
 
 ### 6. Visualización de Emociones en Tiempo Real
-- **Function calling:** `report_emotion` con parámetros `emotion` (8 emociones) e `intensity` (1-5)
+- **Function calling:** `report_text_emotion`, `report_voice_emotion`, `report_facial_emotion` (o unificado `report_emotions`) con parámetros de emoción e intensidad
 - Todos los agentes excepto Faro reportan la emoción silenciosamente después de cada turno del usuario
 - **UI:** Badge/pill debajo del nombre del agente con la emoción detectada y puntos de intensidad
 - **Glow:** Capa radial secundaria en el fondo que mezcla el color de la emoción con opacidad proporcional a la intensidad
-- **Emociones:** Tristeza, Enojo, Miedo, Culpa, Esperanza, Calma, Amor, Vacío — cada una con color distinto
+- **Emociones:** Tristeza, Enojo, Miedo, Culpa, Esperanza, Calma, Amor, Vacío, Concentración, Sorpresa, Alegría, Ansiedad, Confusión, Gratitud — cada una con color distinto
 
 ### 7. Ejercicios de Respiración Guiados (Serena)
 - **Function calling exclusivo de Serena:** `start_breathing_exercise` y `stop_breathing_exercise`
@@ -131,11 +131,12 @@ Sanemos AI Live es una plataforma de acompañamiento emocional en duelo que util
 ### 9. Resumen Post-Sesión
 - Al salir con >2 mensajes: disconnect + pantalla de resumen en vez de salir directo
 - **API:** Llamada REST a `gemini-2.5-flash:generateContent` con `maxOutputTokens: 4096`
-- **Prompt:** Genera resumen compasivo en español con 4 secciones exactas
+- **Prompt:** Genera resumen compasivo en el idioma del usuario con 4 secciones exactas
 - **Secciones:** Resumen Emocional (💙), Temas Principales (📋), Recursos (🔗), Mensaje de Cierre (🌱)
 - **Parser robusto:** Strips `###`, `**`, y otros formatos markdown antes de matchear títulos de sección
-- Aplicación de `maskPII()` al resultado
-- Botones: "Copiar resumen" (clipboard) y "Volver al inicio"
+- No se aplica `maskPII()` al resumen generado (causa falsos positivos en palabras genéricas)
+- Botones: "Copiar resumen", "Guardar en Diario", "Enviar a Terapeuta", "Volver al inicio"
+- Cerrable por voz via `dismiss_modal` tool (usa `dismissSummaryCallbackRef`)
 - States: loading spinner, error con retry, contenido renderizado
 
 ### 10. Código de Acceso (Access Gate)
@@ -163,7 +164,8 @@ Sanemos AI Live es una plataforma de acompañamiento emocional en duelo que util
 - **Contact:** Teléfono y email para contacto directo
 - **Tools:**
   - `send_to_therapist`: Abre modal para compartir resumen de sesión
-  - `schedule_appointment`: Abre modal para agendar cita
+  - `schedule_appointment`: Abre modal visual para navegar slots disponibles
+  - `book_appointment`: Reserva directa con `preferred_day` + `preferred_time` (ej: "miércoles a las 17")
 - **Modal TherapistModal:** Muestra info terapeuta + botón para copiar resumen formateado al email
 - **Modal AppointmentModal:** Grid de slots disponibles (próximos 3 días hábiles × 3 horarios: 10:00, 15:00, 17:00)
 - **Storage de citas:** localStorage con clave `sanemos_appointments`
@@ -172,14 +174,31 @@ Sanemos AI Live es una plataforma de acompañamiento emocional en duelo que util
 ### 14. Agente Recepcionista (Sofía)
 - **Rol:** Bienvenida, routing y onboarding
 - **Flow:**
-  1. Usuario clickea "👋 Comenzar" en landing
-  2. Sofía saluda warmly y presenta opciones de agentes
-  3. Usuario pide hablar con agente específico o usa funciones (diario, terapeuta, citas)
-  4. Sofía routea con `switch_agent` hacia el agente elegido
-- **Onboarding:** Si es primera visita (`isFirstVisit`), Sofía ofrece tour guiado por voz
+  1. Usuario clickea avatar de Sofía en landing (círculo con foto + "Hablar con Sofía")
+  2. Speech bubbles decorativas alrededor del avatar muestran comandos de ejemplo
+  3. Sofía saluda warmly y presenta opciones de agentes
+  4. Usuario pide hablar con agente específico o usa funciones (diario, terapeuta, citas)
+  5. Sofía routea con `switch_agent` hacia el agente elegido
+- **Onboarding:** Si es primera visita (`isFirstVisit`), Sofía ofrece tour detallado por voz cubriendo 10 temas: qué es Sanemos, los 7 agentes, comandos de voz, diario, terapeuta/citas, posts sociales, respiración, cámara, settings, privacidad
 - **Tool exclusiva:** `mark_onboarding_done` para marcar localStorage después del tour
 - **Exclusiones:** No tiene emotion tools (no hace acompañamiento), pero tiene access a diary/therapist tools
 - **Filtrado:** Sofía se filtra de la grilla de agentes con `filter(a => !a.isReceptionist)`
+- **Grid visual:** Los agentes aparecen en un contenedor visual "dentro de la sección de Sofía", con Faro separado y estilizado con colores rojos de crisis
+
+### 15. Tema Claro / Oscuro / Sistema
+- **ThemeProvider** con 3 modos: dark, light, system
+- **CSS variables:** `.dark` y `.light` selectors con ~20 tokens cada uno
+- **Tailwind v4:** `@theme` registration de colores semánticos (`bg-bg`, `text-fg`, `text-accent`, etc.)
+- **FOUC prevention:** Inline script en `<head>` lee localStorage antes de hidratación
+- **ThemeToggle:** Pill de 3 segmentos (sol/monitor/luna)
+- **Persistencia:** localStorage key `sanemos_theme`
+
+### 16. Página de Arquitectura Interactiva
+- **Ruta:** `/architecture`
+- **i18n completo:** 60+ claves `arch.*` en ES y EN
+- **ThemeProvider + ThemeToggle + LanguageToggle** integrados
+- **Secciones:** Client Browser ↔ Gemini API, 8 Agents, Tool System, Key Features, Data Flow
+- **Colores:** Usa tokens del tema (no hardcodeados)
 
 ---
 
@@ -198,10 +217,13 @@ msg.toolCall.functionCalls → for...of loop:
   ├── generate_social_post → setSocialPost({ platform, post_text, occasion })
   ├── copy_to_clipboard → navigator.clipboard.writeText() + setUiToast
   ├── open_url → window.open(url, '_blank') + setUiToast
-  ├── dismiss_modal → setSocialPost(null)
+  ├── dismiss_modal → setSocialPost(null) + setShowDiaryModal(false) + setShowAppointmentsModal(false) + dismissSummaryCallbackRef()
+  ├── show_diary → setShowDiaryModal(true)
+  ├── show_appointments → setShowAppointmentsModal(true)
   ├── save_diary_entry → setDiaryAction({ type: 'save', title }) [si messages.length > 2]
   ├── send_to_therapist → setTherapistAction({ type: 'send', summary_text }) [si messages.length > 2]
-  ├── schedule_appointment → setShowAppointment(true)
+  ├── schedule_appointment → setShowAppointment(true) [picker visual]
+  ├── book_appointment → match preferred_day+preferred_time → bookAppointment(slot) [reserva directa]
   └── mark_onboarding_done → localStorage.setItem('sanemos_onboarding_done', 'true')
 
 → Envía toolResponse para TODOS los calls no-destructivos:
@@ -211,7 +233,7 @@ msg.toolCall.functionCalls → for...of loop:
 Las `functionDeclarations` se construyen dinámicamente por agente:
 - **Todos:** `escalate_to_crisis_faro`, `end_session`, `switch_agent`, UI tools
 - **Excepto Sofía:** Emotion tools
-- **Excepto Faro:** `save_diary_entry`, `send_to_therapist`, `schedule_appointment`
+- **Excepto Faro:** `save_diary_entry`, `send_to_therapist`, `schedule_appointment`, `book_appointment`
 - **Solo Serena:** `start_breathing_exercise`, `stop_breathing_exercise`
 - **Solo Sofía:** `mark_onboarding_done`
 
@@ -244,6 +266,7 @@ src/
 │   ├── AppointmentModal.module.css # Estilos de citas
 │   ├── SocialPostModal.js         # Modal de posts de redes sociales
 │   ├── LanguageToggle.js          # Toggle ES/EN
+│   ├── ThemeToggle.js             # Toggle dark/light/system
 │   ├── SettingsPanel.js           # Panel de configuración de API
 │   ├── OnboardingOverlay.js       # Tour de onboarding (legacy)
 │   └── EmotionTimeline.js         # Línea temporal de emociones
@@ -255,11 +278,14 @@ src/
 │   ├── therapist.js               # THERAPIST const, getAvailableSlots, bookAppointment, getAppointments
 │   ├── userContexts.js            # Perfiles de usuario + detección de país
 │   ├── piiScrubber.js             # Masking de teléfonos, emails, RUT/DNI
+│   ├── lightweightNerModel.js     # NER browser-safe para nombres, ubicaciones
 │   └── gemini-api-notes.md        # Notas de configuración de API (legacy)
+├── theme/
+│   └── ThemeContext.js            # ThemeProvider + useTheme (dark/light/system)
 └── i18n/
     ├── I18nContext.js             # Context de internacionalización
-    ├── es.json                    # Traducciones español (90+ keys)
-    └── en.json                    # Traducciones inglés (90+ keys)
+    ├── es.json                    # Traducciones español (150+ keys)
+    └── en.json                    # Traducciones inglés (150+ keys)
 
 public/
 ├── sofia.png, luna.png, marco.png, serena.png, alma.png, nora.png, iris.png, faro.png  # Avatares
@@ -346,3 +372,8 @@ La API key de Google Cloud **no debe tener restricción por HTTP Referrer**, ya 
 - Emotion tools para Sofía → excluir en buildFunctionDeclarations basado en `agentId === 'sofia'`
 - Onboarding no se detectaba → usar `isFirstVisit` prop en GeminiLiveSession
 - localStorage key collision → usar `sanemos_diary` y `sanemos_appointments` como keys únicas
+- `dismiss_modal` no cerraba SessionSummary → agregar `dismissSummaryCallbackRef` (ref callback pattern entre hook y componente)
+- `book_appointment` no usado por Sofía → actualizar system prompt para distinguir `schedule_appointment` (picker) vs `book_appointment` (reserva directa)
+- Diary save via voz no persistía → `lastSessionDataRef.current = null` después de save destruía el componente SessionSummary
+- SessionSummary no se podía scrollear/cerrar → separar flex centering del overflow-y-auto con divs anidados
+- SessionSummary AI summary no debe pasar por `maskPII()` → causa falsos positivos en palabras genéricas

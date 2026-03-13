@@ -56,7 +56,7 @@ export default function AppointmentsViewModal({ isOpen, onClose, locale }) {
                         </div>
                       </div>
                       <div className={styles.entryBody}>
-                        <p style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#555' }}>
+                        <p style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: 'var(--fg-secondary)' }}>
                           {THERAPIST.specialty} · {THERAPIST.email}
                         </p>
                         <div className={styles.entryFooter}>
@@ -74,7 +74,7 @@ export default function AppointmentsViewModal({ isOpen, onClose, locale }) {
               )}
               {past.length > 0 && (
                 <>
-                  <p style={{ fontSize: '0.85rem', color: '#999', marginTop: upcoming.length > 0 ? '16px' : '0', marginBottom: '8px' }}>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--fg-secondary)', marginTop: upcoming.length > 0 ? '16px' : '0', marginBottom: '8px' }}>
                     {isEs ? 'Pasadas' : 'Past'}
                   </p>
                   <ul className={styles.entryList}>
