@@ -1,20 +1,27 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { resetPIIMappings } from '@/lib/piiScrubber';
+import { getAvailableSlots, bookAppointment } from '@/lib/therapist';
 
 const GEMINI_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 
-function buildSystemPrompt(basePrompt, userContext, userCountry, locale, agentId, isFirstVisit) {
+function buildSystemPrompt(basePrompt, userContext, userCountry, locale, agentId) {
     const lang = locale === 'es' ? 'Spanish' : 'English';
     const langInstruction = `LANGUAGE INSTRUCTION: You MUST respond in ${lang}. This is non-negotiable — always speak and respond in ${lang} regardless of the language of the context below.\n\n`;
 
     let prompt = basePrompt;
 
-    // Inject first visit logic for Sofia
+    // Inject first visit logic for Sofia — read from localStorage for fresh value
     if (agentId === 'sofia') {
-        if (isFirstVisit) {
+        let firstVisit = true;
+        try { firstVisit = localStorage.getItem('sanemos_onboarding_done') !== 'true'; } catch {}
+        if (firstVisit) {
             prompt = prompt.replace('This is the user\'s FIRST visit', 'This is the user\'s FIRST visit — ask if they want a guided tour');
         } else {
-            prompt = prompt.replace('Returning user — greet briefly', 'Returning user — greet briefly');
+            prompt = prompt.replace(
+                /FIRST VISIT LOGIC:[\s\S]*?(?=AGENT ROUTING:)/,
+                'FIRST VISIT LOGIC:\nThis is a RETURNING user. Do NOT offer a tour. Greet briefly and ask what support they need today.\n\n'
+            );
         }
     }
 
@@ -43,8 +50,8 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
                 properties: {
                     agent_id: {
                         type: "STRING",
-                        enum: ["luna", "marco", "serena", "alma", "nora", "iris"],
-                        description: "Agent ID: luna, marco, serena, alma, nora, or iris"
+                        enum: ["sofia", "luna", "marco", "serena", "alma", "nora", "iris"],
+                        description: "Agent ID: sofia (receptionist), luna, marco, serena, alma, nora, or iris"
                     }
                 },
                 required: ["agent_id"]
@@ -133,15 +140,26 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
             {
                 name: "dismiss_modal",
                 description: "Close any open popup/modal on screen. Use when the user says to close it or continue."
+            },
+            {
+                name: "show_diary",
+                description: "Open the user's personal diary so they can view their saved entries. Call when the user asks to see their diary, journal, or past entries."
+            },
+            {
+                name: "show_appointments",
+                description: "Open the user's appointments view so they can see their scheduled appointments. Call when the user asks to see their appointments, upcoming visits, or booked sessions."
             }
         );
 
-        // Diary & Therapist tools — available to all except Faro and Sofia
-        if (agentId !== 'sofia') {
+        // Diary & Therapist tools — available to all except Faro
+        // Sofia gets them too for post-session review (operates on previous session data)
+        if (agentId !== 'faro') {
             declarations.push(
                 {
                     name: "save_diary_entry",
-                    description: "Save a diary entry from this session. Call when the user wants to save their thoughts or when offering to save.",
+                    description: agentId === 'sofia'
+                        ? "Save the previous session to the user's diary. Call when the user wants to save their session or you suggest it."
+                        : "Save a diary entry from this session. Call when the user wants to save their thoughts or when offering to save.",
                     parameters: {
                         type: "OBJECT",
                         properties: {
@@ -151,7 +169,9 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
                 },
                 {
                     name: "send_to_therapist",
-                    description: "Send a summary of this session to a therapist. Prepare a brief, professional summary text.",
+                    description: agentId === 'sofia'
+                        ? "Send a summary of the previous session to a therapist. Prepare a brief, professional summary."
+                        : "Send a summary of this session to a therapist. Prepare a brief, professional summary text.",
                     parameters: {
                         type: "OBJECT",
                         properties: {
@@ -162,17 +182,29 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
                 },
                 {
                     name: "schedule_appointment",
-                    description: "Help the user schedule an appointment with their therapist. Call to open the appointment booking interface."
+                    description: "Open the appointment booking interface so the user can pick a time visually."
+                },
+                {
+                    name: "book_appointment",
+                    description: "Directly book an appointment for a specific date and time. Use this when the user tells you their preferred day and time (e.g., 'Monday at 5pm'). Available slots are next 3 business days at 10:00, 15:00, 17:00.",
+                    parameters: {
+                        type: "OBJECT",
+                        properties: {
+                            preferred_day: { type: "STRING", description: "Day of week or date the user wants (e.g. 'lunes', 'Monday', 'March 16')" },
+                            preferred_time: { type: "STRING", description: "Time the user wants (e.g. '17:00', '5pm', '10 de la mañana')" }
+                        },
+                        required: ["preferred_day", "preferred_time"]
+                    }
                 }
             );
+        }
 
-            // Sofia-specific tool: mark onboarding as done
-            if (agentId === 'sofia') {
-                declarations.push({
-                    name: "mark_onboarding_done",
-                    description: "Mark that the user has completed the onboarding/tour. Call after the tour is complete."
-                });
-            }
+        // Sofia-specific tool: mark onboarding as done
+        if (agentId === 'sofia') {
+            declarations.push({
+                name: "mark_onboarding_done",
+                description: "Mark the onboarding as done. Call this IMMEDIATELY after the tour finishes OR when the user declines the tour."
+            });
         }
     }
 
@@ -203,10 +235,11 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
     return declarations;
 }
 
-export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSession, onSwitchAgent, userContext, userCountry, settings, locale, isFirstVisit = false) {
+export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSession, onSwitchAgent, userContext, userCountry, settings, locale) {
     const [status, setStatus] = useState('disconnected'); // disconnected, connecting, connected
     const [agent, setAgent] = useState(initialAgent);
     const [messages, setMessages] = useState([]);         // completed full messages
+    const messagesRef = useRef([]);                        // ref mirror for stale-closure-safe access in ws.onmessage
     const [currentMessage, setCurrentMessage] = useState(null); // in-progress message {text, sender}
     const currentMsgRef = useRef(null); // accumulator ref (avoids stale closure in ws.onmessage)
     const [error, setError] = useState(null);
@@ -222,6 +255,9 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
     const [diaryAction, setDiaryAction] = useState(null);       // { type: 'save', title }
     const [therapistAction, setTherapistAction] = useState(null); // { type: 'send', summary_text }
     const [showAppointment, setShowAppointment] = useState(false); // show appointment booking modal
+    const [showDiaryModal, setShowDiaryModal] = useState(false); // show diary viewer modal
+    const [showAppointmentsModal, setShowAppointmentsModal] = useState(false); // show appointments viewer modal
+    const lastSessionDataRef = useRef(null); // stores previous session data for Sofia post-session review
 
     const wsRef = useRef(null);
     const lastAudioSentRef = useRef(null);                       // timestamp of last audio send
@@ -246,6 +282,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
     onEndSessionRef.current = onEndSession;
     const onSwitchAgentRef = useRef(onSwitchAgent);
     onSwitchAgentRef.current = onSwitchAgent;
+    messagesRef.current = messages;
     const userContextRef = useRef(userContext);
     userContextRef.current = userContext;
     const userCountryRef = useRef(userCountry);
@@ -256,6 +293,9 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
     localeRef.current = locale;
 
     const turnCompleteTimerRef = useRef(null);
+    const autoReconnectRef = useRef(false);
+    const autoReconnectJustHappenedRef = useRef(false);
+    const reconnectCountRef = useRef(0);
 
     // Finalize the current in-progress message → push to completed messages
     const finalizeCurrentMessage = () => {
@@ -309,10 +349,17 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
 
         setStatus('connecting');
         setError(null);
-        setMessages([]);
+        // On auto-reconnect (1008/1011), preserve transcript history
+        if (autoReconnectRef.current) {
+            autoReconnectRef.current = false;
+        } else {
+            setMessages([]);
+        }
         setCurrentMessage(null);
         currentMsgRef.current = null;
-        closingIntentionallyRef.current = false;
+        // Don't reset closingIntentionallyRef here — old WS onclose may still fire.
+        // It resets in ws.onopen when the new connection is actually established.
+        resetPIIMappings();
 
         try {
             const safeApiKey = typeof apiKey === 'string' ? apiKey.trim() : "";
@@ -321,6 +368,8 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
             wsRef.current = ws;
 
             ws.onopen = () => {
+                closingIntentionallyRef.current = false;
+                reconnectCountRef.current = 0;
                 setStatus('connected');
                 // Gemini Multimodal Live API requires an initial "setup" message 
                 // to configure the model, system prompt, and tools.
@@ -345,7 +394,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                     model: "models/gemini-2.5-flash-native-audio-preview-12-2025",
                     generationConfig: genConfig,
                     systemInstruction: {
-                        parts: [{ text: buildSystemPrompt(agent.systemPrompt, userContextRef.current, userCountryRef.current, localeRef.current, agent.id, isFirstVisit) }]
+                        parts: [{ text: buildSystemPrompt(agent.systemPrompt, userContextRef.current, userCountryRef.current, localeRef.current, agent.id) }]
                     },
                     tools: [
                         {
@@ -364,15 +413,28 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                 // Small delay to ensure setup is acknowledged before blasting audio
                 setTimeout(() => {
                     startAudioCapture();
-                    // If this is an agent switch, send a context message to prime the new agent
-                    if (pendingSwitchContextRef.current) {
-                        const contextMsg = pendingSwitchContextRef.current;
-                        pendingSwitchContextRef.current = null;
+                    // Send a context message to prime the agent to speak first
+                    const contextMsg = pendingSwitchContextRef.current;
+                    pendingSwitchContextRef.current = null;
+                    // For Sofia on initial connect (no switch context), auto-greet
+                    // On auto-reconnect, don't re-greet — just resume
+                    const isReconnect = autoReconnectJustHappenedRef.current;
+                    autoReconnectJustHappenedRef.current = false;
+                    let primeMsg = contextMsg || null;
+                    if (!primeMsg) {
+                        if (isReconnect) {
+                            // On auto-reconnect, send a resume prime so the agent re-engages
+                            primeMsg = 'The session was briefly interrupted by a network issue. Continue the conversation naturally — greet the user again briefly and ask how you can help.';
+                        } else if (agent.isReceptionist) {
+                            primeMsg = 'The user just arrived. Greet them warmly and start the conversation.';
+                        }
+                    }
+                    if (primeMsg) {
                         setTimeout(() => {
                             if (ws.readyState === WebSocket.OPEN) {
                                 ws.send(JSON.stringify({
                                     clientContent: {
-                                        turns: [{ role: "user", parts: [{ text: contextMsg }] }],
+                                        turns: [{ role: "user", parts: [{ text: primeMsg }] }],
                                         turnComplete: true
                                     }
                                 }));
@@ -451,11 +513,27 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                                 const agentId = call.args?.agent_id;
                                 console.log(`🔄 SWITCH AGENT requested: ${agentId}`);
                                 closingIntentionallyRef.current = true;
-                                // Small delay to let the acknowledgement audio play
-                                setTimeout(() => {
-                                    if (onSwitchAgentRef.current) onSwitchAgentRef.current(agentId);
-                                }, 1500);
-                                return; // Don't send toolResponse — WS will be torn down for switch
+                                // Send toolResponse so the server doesn't crash with 1011
+                                if (ws.readyState === WebSocket.OPEN) {
+                                    ws.send(JSON.stringify({
+                                        toolResponse: { functionResponses: [{
+                                            id: call.id,
+                                            response: { result: { success: true } }
+                                        }] }
+                                    }));
+                                }
+                                // Wait for farewell audio to finish, then switch
+                                let switchChecks = 0;
+                                const waitAndSwitch = () => {
+                                    switchChecks++;
+                                    if (activeSourcesRef.current <= 0 || switchChecks > 10) {
+                                        if (onSwitchAgentRef.current) onSwitchAgentRef.current(agentId);
+                                    } else {
+                                        setTimeout(waitAndSwitch, 500);
+                                    }
+                                };
+                                setTimeout(waitAndSwitch, 1000);
+                                return;
                             }
                             // Unified emotion tool (1 call per turn)
                             if (call.name === 'report_emotions') {
@@ -531,11 +609,19 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                             }
                             if (call.name === 'dismiss_modal') {
                                 setSocialPost(null);
+                                setShowDiaryModal(false);
+                            }
+                            if (call.name === 'show_diary') {
+                                setShowDiaryModal(true);
+                            }
+                            if (call.name === 'show_appointments') {
+                                setShowAppointmentsModal(true);
                             }
                             if (call.name === 'save_diary_entry') {
                                 const args = call.args || {};
-                                // Safety check: only allow saving if there are enough messages (session has content)
-                                if (currentMsgRef.current || messages.length > 2) {
+                                // Safety check: use messagesRef (not messages) to avoid stale closure
+                                // Also accept if lastSessionDataRef has data (Sofia post-session review)
+                                if (currentMsgRef.current || messagesRef.current.length > 2 || lastSessionDataRef.current) {
                                     setDiaryAction({ type: 'save', title: args.title });
                                 } else {
                                     setUiToast('No hay sesión para guardar');
@@ -544,7 +630,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                             }
                             if (call.name === 'send_to_therapist') {
                                 const args = call.args || {};
-                                if (currentMsgRef.current || messages.length > 2) {
+                                if (currentMsgRef.current || messagesRef.current.length > 2 || lastSessionDataRef.current) {
                                     setTherapistAction({ type: 'send', summary_text: args.summary_text });
                                 } else {
                                     setUiToast('No hay sesión para enviar');
@@ -552,8 +638,51 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                                 }
                             }
                             if (call.name === 'schedule_appointment') {
-                                // Schedule can happen anytime
+                                // Schedule can happen anytime — open visual picker
                                 setShowAppointment(true);
+                            }
+                            if (call.name === 'book_appointment') {
+                                // Try to auto-book by matching preferred day/time to available slots
+                                const args = call.args || {};
+                                const dayPref = (args.preferred_day || '').toLowerCase();
+                                const timePref = (args.preferred_time || '').toLowerCase();
+                                const slots = getAvailableSlots();
+                                // Normalize time to HH:MM
+                                let targetTime = null;
+                                const timeMatch = timePref.match(/(\d{1,2})[:\s]*(\d{2})?/);
+                                if (timeMatch) {
+                                    let h = parseInt(timeMatch[1]);
+                                    const m = timeMatch[2] || '00';
+                                    if (timePref.includes('pm') && h < 12) h += 12;
+                                    if (timePref.includes('am') && h === 12) h = 0;
+                                    targetTime = `${String(h).padStart(2, '0')}:${m}`;
+                                }
+                                // Match slot by day name/date and time
+                                const matched = slots.find(s => {
+                                    const dStr = s.displayDate.toLowerCase();
+                                    const dayMatch = dayPref && (dStr.includes(dayPref) || s.date.includes(dayPref));
+                                    const timeOk = !targetTime || s.displayTime === targetTime;
+                                    return dayMatch && timeOk;
+                                });
+                                if (matched) {
+                                    bookAppointment(matched);
+                                    // Override the toolResponse for this call with booking details
+                                    const idx = responses.findIndex(r => r.id === call.id);
+                                    if (idx >= 0) responses.splice(idx, 1);
+                                    responses.push({
+                                        id: call.id,
+                                        response: { result: { success: true, booked: true, date: matched.displayDate, time: matched.displayTime } }
+                                    });
+                                } else {
+                                    // No match — open the manual picker as fallback
+                                    setShowAppointment(true);
+                                    const idx = responses.findIndex(r => r.id === call.id);
+                                    if (idx >= 0) responses.splice(idx, 1);
+                                    responses.push({
+                                        id: call.id,
+                                        response: { result: { success: false, reason: 'No matching slot found. The appointment picker has been opened for the user to select manually.' } }
+                                    });
+                                }
                             }
                             if (call.name === 'mark_onboarding_done') {
                                 // Mark onboarding as done in localStorage
@@ -581,8 +710,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
             };
 
             ws.onerror = (e) => {
-                // Ignore errors from stale WebSocket (e.g. React strict mode double-mount)
-                if (wsRef.current !== ws) return;
+                if (wsRef.current !== ws || closingIntentionallyRef.current) return;
                 console.error("WebSocket Error:", e);
                 const errorMessage = e && e.message ? e.message : "Ensure your API Key is valid and supports the Multimodal Live API. Check API Key restrictions.";
                 setError(`WebSocket connection failed. ${errorMessage}`);
@@ -591,10 +719,31 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
             };
 
             ws.onclose = (event) => {
-                // Ignore close from stale WebSocket (e.g. React strict mode double-mount)
-                if (wsRef.current !== ws) return;
+                if (wsRef.current !== ws || closingIntentionallyRef.current) return;
                 console.log(`WebSocket closed. Code: ${event.code}, Reason: ${event.reason}`);
-                if (event.code !== 1000 && event.code !== 1005 && !closingIntentionallyRef.current) {
+                // 1008 = session expired/not found, 1011 = server internal error (e.g. interrupted mid-generation)
+                // Auto-reconnect transparently for both
+                if (event.code === 1008 || event.code === 1011) {
+                    reconnectCountRef.current += 1;
+                    const count = reconnectCountRef.current;
+                    if (count > 5) {
+                        console.warn(`Too many reconnects (${count}), stopping.`);
+                        setError('Connection lost after multiple retries. Please reconnect manually.');
+                        setStatus('disconnected');
+                        cleanupAudio();
+                        reconnectCountRef.current = 0;
+                        return;
+                    }
+                    const delay = Math.min(500 * Math.pow(2, count - 1), 4000);
+                    console.log(`Server error (${event.code}), auto-reconnecting in ${delay}ms (attempt ${count}/5)...`);
+                    cleanupAudio();
+                    wsRef.current = null;
+                    autoReconnectRef.current = true;
+                    autoReconnectJustHappenedRef.current = true;
+                    setTimeout(() => connect(), delay);
+                    return;
+                }
+                if (event.code !== 1000 && event.code !== 1005) {
                     setError(`WebSocket closed abnormally: ${event.code} ${event.reason}`);
                 }
                 setStatus('disconnected');
@@ -605,11 +754,14 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
             setError(err.message);
             setStatus('disconnected');
         }
-    }, [apiKey, agent.systemPrompt, isFirstVisit]);
+    }, [apiKey, agent.systemPrompt]);
 
     const disconnect = useCallback(() => {
         if (wsRef.current) {
-            wsRef.current.close();
+            wsRef.current.onclose = null;
+            wsRef.current.onerror = null;
+            wsRef.current.onmessage = null;
+            try { wsRef.current.close(); } catch (_) {}
             wsRef.current = null;
         }
         cleanupAudio();
@@ -621,13 +773,17 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
         setAgent(newAgent);
         setBreathingExercise(null);
         setEmotion(null);
+        reconnectCountRef.current = 0;
         if (contextMessage) {
             pendingSwitchContextRef.current = contextMessage;
         }
-        // Agent state update triggers connect to use new systemPrompt via dependency
-        // We need to disconnect first, then reconnect after state settles
+        // Detach old WS event handlers BEFORE closing to prevent late 1011/1008 errors
+        // from reaching the UI. This is the definitive fix for the race condition.
         if (wsRef.current) {
-            wsRef.current.close();
+            wsRef.current.onclose = null;
+            wsRef.current.onerror = null;
+            wsRef.current.onmessage = null;
+            try { wsRef.current.close(); } catch (_) {}
             wsRef.current = null;
         }
         cleanupAudio();
@@ -896,6 +1052,11 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
         setTherapistAction,
         showAppointment,
         setShowAppointment,
+        showDiaryModal,
+        setShowDiaryModal,
+        showAppointmentsModal,
+        setShowAppointmentsModal,
+        lastSessionDataRef,
         connect,
         disconnect
     };

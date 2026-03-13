@@ -1,10 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { loadDiary, deleteDiaryEntry, formatDiaryDate } from '@/lib/diary';
 import styles from './DiaryModal.module.css';
 
 export default function DiaryModal({ isOpen, onClose, locale }) {
-  const [entries, setEntries] = useState(() => loadDiary());
+  const [entries, setEntries] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
+
+  // Reload entries every time the modal opens
+  useEffect(() => {
+    if (isOpen) setEntries(loadDiary());
+  }, [isOpen]);
 
   const isEs = locale === 'es';
 

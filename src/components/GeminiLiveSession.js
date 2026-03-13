@@ -7,11 +7,12 @@ import { maskPII } from '@/lib/piiScrubber';
 import { saveDiaryEntry } from '@/lib/diary';
 import { useI18n } from '@/i18n/I18nContext';
 import BreathingVisualizer from './BreathingVisualizer';
-import SessionSummary from './SessionSummary';
 import SocialPostModal from './SocialPostModal';
 import DiaryModal from './DiaryModal';
 import TherapistModal from './TherapistModal';
 import AppointmentModal from './AppointmentModal';
+import AppointmentsViewModal from './AppointmentsViewModal';
+import SessionSummary from './SessionSummary';
 import LanguageToggle from './LanguageToggle';
 
 const EMOTION_COLORS = {
@@ -25,7 +26,6 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
     const [isFaroMode, setIsFaroMode] = useState(false);
     const [showSidePanel, setShowSidePanel] = useState(false);
     const [showSummary, setShowSummary] = useState(false);
-    const [showDiary, setShowDiary] = useState(false);
     const [showTherapist, setShowTherapist] = useState(false);
     const [activeTooltip, setActiveTooltip] = useState(null);
     const sidePanelRef = useRef(null);
@@ -43,7 +43,27 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
         if (!newAgent) return;
         if (agentId === 'faro') return;
         setIsFaroMode(false);
-        switchAgent(newAgent, t('session.switchContext', { name: newAgent.name }));
+
+        // When switching to Sofia from a therapeutic agent, capture session data and show summary
+        if (agentId === 'sofia' && !agent.isReceptionist && messages.length > 2) {
+            const transcript = messages
+                .map(m => `[${m.sender === 'user' ? t('summary.promptUser') : agent.name}]: ${m.text}`)
+                .join('\n');
+            lastSessionDataRef.current = {
+                messages: [...messages],
+                agentName: agent.name,
+                agentId: agent.id,
+                agentColor: agent.color,
+                emotionHistory: [...emotionHistory]
+            };
+            setShowSummary(true);
+            switchAgent(newAgent, t('session.sofiaPostSessionContext', {
+                name: agent.name,
+                transcript: transcript.slice(0, 3000)
+            }));
+        } else {
+            switchAgent(newAgent, t('session.switchContext', { name: newAgent.name }));
+        }
     };
 
     // Use i18n-translated context detail so the system prompt matches the selected language
@@ -58,6 +78,9 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
         diaryAction, setDiaryAction,
         therapistAction, setTherapistAction,
         showAppointment, setShowAppointment,
+        showDiaryModal, setShowDiaryModal,
+        showAppointmentsModal, setShowAppointmentsModal,
+        lastSessionDataRef,
         switchAgent, connect, disconnect
     } = useGeminiLive(apiKey, initialAgent, handleEscalateToFaro, () => handleExitRef.current?.(), handleSwitchAgent, translatedContext, userCountry, geminiSettings, locale, isFirstVisit);
 
@@ -69,17 +92,30 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Handle diary save action
+    // Handle diary save action — use lastSessionData if Sofia is reviewing a previous session
     useEffect(() => {
         if (diaryAction?.type === 'save') {
-            saveDiaryEntry({
-                title: diaryAction.title,
-                agentName: agent.name,
-                agentId: agent.id,
-                summary: '',
-                emotionTimeline: emotionHistory,
-                messages
-            });
+            const prev = lastSessionDataRef.current;
+            if (prev) {
+                saveDiaryEntry({
+                    title: diaryAction.title || `Sesión con ${prev.agentName}`,
+                    agentName: prev.agentName,
+                    agentId: prev.agentId,
+                    summary: '',
+                    emotionTimeline: prev.emotionHistory,
+                    messages: prev.messages
+                });
+                lastSessionDataRef.current = null; // consumed
+            } else {
+                saveDiaryEntry({
+                    title: diaryAction.title,
+                    agentName: agent.name,
+                    agentId: agent.id,
+                    summary: '',
+                    emotionTimeline: emotionHistory,
+                    messages
+                });
+            }
             setDiaryAction(null);
         }
     }, [diaryAction, agent, emotionHistory, messages, setDiaryAction]);
@@ -120,50 +156,41 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
     const emotionColor = primaryEmotion ? EMOTION_COLORS[primaryEmotion.emotion] : null;
     const emotionOpacity = primaryEmotion ? Math.min(primaryEmotion.intensity / 5, 1) * 0.3 : 0;
 
-    // Exit handler
+    // Exit handler — skip summary for Sofia (receptionist, no therapeutic session)
+    // Instead of showing SessionSummary, return to Sofia with session context so she can review it
     const handleExit = () => {
-        if (messages.length > 2) {
-            disconnect();
+        if (messages.length > 2 && !agent.isReceptionist) {
+            // Store previous session data and show summary + switch to Sofia
+            const transcript = messages
+                .map(m => `[${m.sender === 'user' ? t('summary.promptUser') : agent.name}]: ${m.text}`)
+                .join('\n');
+            lastSessionDataRef.current = {
+                messages: [...messages],
+                agentName: agent.name,
+                agentId: agent.id,
+                agentColor: agent.color,
+                emotionHistory: [...emotionHistory]
+            };
             setShowSummary(true);
+            const sofia = getAgent('sofia');
+            if (sofia) {
+                setIsFaroMode(false);
+                switchAgent(sofia, t('session.sofiaPostSessionContext', {
+                    name: agent.name,
+                    transcript: transcript.slice(0, 3000)
+                }));
+            }
         } else {
             onClose();
         }
     };
     handleExitRef.current = handleExit;
 
-    // Handle save to diary from summary
-    const handleSaveDiary = (summaryText) => {
-        saveDiaryEntry({
-            title: `Sesión con ${agent.name}`,
-            agentName: agent.name,
-            agentId: agent.id,
-            summary: summaryText,
-            emotionTimeline: emotionHistory,
-            messages
-        });
-    };
-
-    // Handle send to therapist from summary
+    // Handle send to therapist — use lastSessionData if available (Sofia post-session review)
     const handleSendToTherapist = (summaryText) => {
         setTherapistAction({ type: 'send', summary_text: summaryText });
         setShowTherapist(true);
     };
-
-    if (showSummary) {
-        return (
-            <SessionSummary
-                messages={messages}
-                agentName={activeName}
-                agentColor={activeColor}
-                apiKey={apiKey}
-                emotionHistory={emotionHistory}
-                onClose={onClose}
-                onSaveDiary={handleSaveDiary}
-                onSendToTherapist={handleSendToTherapist}
-                locale={locale}
-            />
-        );
-    }
 
     return (
         <div className="fixed inset-0 bg-black z-50 flex overflow-hidden" style={{ '--dynamic-color': activeColor }}>
@@ -306,6 +333,22 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                                         )}
                                     </div>
                                 )}
+                                {/* Diary button */}
+                                <button
+                                    onClick={() => setShowDiaryModal(true)}
+                                    className="flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-md transition-colors text-xs font-medium border bg-white/5 border-white/10 text-gray-400 hover:bg-white/10"
+                                >
+                                    <span className="text-sm">📔</span>
+                                    {t('session.diary')}
+                                </button>
+                                {/* Appointments button */}
+                                <button
+                                    onClick={() => setShowAppointmentsModal(true)}
+                                    className="flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-md transition-colors text-xs font-medium border bg-white/5 border-white/10 text-gray-400 hover:bg-white/10"
+                                >
+                                    <span className="text-sm">📅</span>
+                                    {t('session.appointments')}
+                                </button>
                             </>
                         )}
                         {/* Language toggle */}
@@ -527,8 +570,15 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
 
             {/* Diary Modal */}
             <DiaryModal
-                isOpen={showDiary}
-                onClose={() => setShowDiary(false)}
+                isOpen={showDiaryModal}
+                onClose={() => setShowDiaryModal(false)}
+                locale={locale}
+            />
+
+            {/* Appointments View Modal */}
+            <AppointmentsViewModal
+                isOpen={showAppointmentsModal}
+                onClose={() => setShowAppointmentsModal(false)}
                 locale={locale}
             />
 
@@ -549,6 +599,34 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                     // Show toast when appointment is booked
                 }}
             />
+
+            {/* Session Summary overlay (shown when returning to Sofia from another agent) */}
+            {showSummary && lastSessionDataRef.current && (
+                <SessionSummary
+                    messages={lastSessionDataRef.current.messages}
+                    agentName={lastSessionDataRef.current.agentName}
+                    agentColor={lastSessionDataRef.current.agentColor}
+                    apiKey={apiKey}
+                    emotionHistory={lastSessionDataRef.current.emotionHistory}
+                    locale={locale}
+                    onClose={() => setShowSummary(false)}
+                    onSaveDiary={(summary) => {
+                        saveDiaryEntry({
+                            title: `Sesión con ${lastSessionDataRef.current.agentName}`,
+                            agentName: lastSessionDataRef.current.agentName,
+                            agentId: lastSessionDataRef.current.agentId,
+                            summary,
+                            emotionTimeline: lastSessionDataRef.current.emotionHistory,
+                            messages: lastSessionDataRef.current.messages
+                        });
+                    }}
+                    onSendToTherapist={(summary) => {
+                        setShowSummary(false);
+                        setTherapistAction({ type: 'send', summary_text: summary });
+                        setShowTherapist(true);
+                    }}
+                />
+            )}
 
             {/* UI Toast */}
             {uiToast && (

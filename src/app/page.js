@@ -4,9 +4,11 @@ import { useState, useEffect } from 'react';
 import { getAllAgents, getAgent } from '@/lib/agents';
 import { USER_CONTEXTS, detectCountry } from '@/lib/userContexts';
 import { loadDiary } from '@/lib/diary';
+import { getAppointments } from '@/lib/therapist';
 import Image from 'next/image';
 import GeminiLiveSession from '@/components/GeminiLiveSession';
 import DiaryModal from '@/components/DiaryModal';
+import AppointmentsViewModal from '@/components/AppointmentsViewModal';
 import { I18nProvider, useI18n } from '@/i18n/I18nContext';
 import LanguageToggle from '@/components/LanguageToggle';
 import SettingsPanel, { loadSettings } from '@/components/SettingsPanel';
@@ -24,6 +26,8 @@ function HomeContent() {
   const [geminiSettings, setGeminiSettings] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showDiary, setShowDiary] = useState(false);
+  const [showAppointments, setShowAppointments] = useState(false);
+  const [showVoiceCommands, setShowVoiceCommands] = useState(false);
   const [isFirstVisit, setIsFirstVisit] = useState(false);
   const [diaryEntries, setDiaryEntries] = useState([]);
 
@@ -119,11 +123,25 @@ function HomeContent() {
 
       <div className="absolute top-6 right-6 z-20 flex items-center gap-2">
         <button
+          onClick={() => setShowVoiceCommands(true)}
+          className="p-2 rounded-full backdrop-blur-md border bg-white/5 border-white/10 text-gray-400 hover:bg-white/10 transition-colors"
+          title={t('page.voiceCommands')}
+        >
+          🎙️
+        </button>
+        <button
           onClick={() => { setShowDiary(true); setDiaryEntries(loadDiary()); }}
           className="p-2 rounded-full backdrop-blur-md border bg-white/5 border-white/10 text-gray-400 hover:bg-white/10 transition-colors"
-          title={t('page.diary') || 'Diary'}
+          title={t('page.diary')}
         >
           📔
+        </button>
+        <button
+          onClick={() => setShowAppointments(true)}
+          className="p-2 rounded-full backdrop-blur-md border bg-white/5 border-white/10 text-gray-400 hover:bg-white/10 transition-colors"
+          title={t('page.appointments')}
+        >
+          📅
         </button>
         <button
           onClick={() => setShowSettings(!showSettings)}
@@ -349,6 +367,63 @@ function HomeContent() {
         onClose={() => setShowDiary(false)}
         locale={t('__lang__')}
       />
+
+      {/* Appointments Modal */}
+      <AppointmentsViewModal
+        isOpen={showAppointments}
+        onClose={() => setShowAppointments(false)}
+        locale={t('__lang__')}
+      />
+
+      {/* Voice Commands Modal */}
+      {showVoiceCommands && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowVoiceCommands(false)}>
+          <div className="bg-[#1a1f1f] border border-white/10 rounded-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-white/10">
+              <div>
+                <h2 className="text-lg font-bold text-white">{t('page.voiceCommandsTitle')}</h2>
+                <p className="text-xs text-gray-500 mt-0.5">{t('page.voiceCommandsSubtitle')}</p>
+              </div>
+              <button onClick={() => setShowVoiceCommands(false)} className="text-gray-500 hover:text-white text-xl w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10">✕</button>
+            </div>
+            <div className="p-5 flex flex-col gap-5">
+              {/* General commands */}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-[#5FB7A6] mb-2">{t('page.cmdCatGeneral')}</h3>
+                <ul className="flex flex-col gap-1.5">
+                  {['cmdEndSession', 'cmdSwitchAgent', 'cmdSaveDiary', 'cmdSendTherapist', 'cmdSchedule', 'cmdBookSpecific', 'cmdShowDiary', 'cmdShowAppointments', 'cmdSocialPost', 'cmdCopyClipboard', 'cmdOpenUrl', 'cmdCloseModal'].map(k => (
+                    <li key={k} className="text-sm text-gray-300 leading-relaxed bg-white/[0.03] rounded-lg px-3 py-2 border border-white/5">
+                      {t(`page.${k}`)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {/* Sofia commands */}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-[#5FB7A6] mb-2">{t('page.cmdCatSofia')}</h3>
+                <ul className="flex flex-col gap-1.5">
+                  {['cmdSofiaRoute', 'cmdSofiaTour'].map(k => (
+                    <li key={k} className="text-sm text-gray-300 leading-relaxed bg-white/[0.03] rounded-lg px-3 py-2 border border-white/5">
+                      {t(`page.${k}`)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {/* Serena commands */}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-[#D4A574] mb-2">{t('page.cmdCatSerena')}</h3>
+                <ul className="flex flex-col gap-1.5">
+                  {['cmdBreathing', 'cmdStopBreathing'].map(k => (
+                    <li key={k} className="text-sm text-gray-300 leading-relaxed bg-white/[0.03] rounded-lg px-3 py-2 border border-white/5">
+                      {t(`page.${k}`)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

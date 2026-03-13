@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { maskPII } from '@/lib/piiScrubber';
+// Note: summary is AI-generated text, not raw user input — no PII scrubbing needed
 import { useI18n } from '@/i18n/I18nContext';
 import EmotionTimeline from './EmotionTimeline';
 
@@ -46,7 +46,7 @@ export default function SessionSummary({ messages, agentName, agentColor, apiKey
             const data = await res.json();
             const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
             if (!text) throw new Error('No summary generated');
-            setSummary(maskPII(text));
+            setSummary(text);
         } catch (err) {
             console.error('Summary generation failed:', err);
             setError(err.message);

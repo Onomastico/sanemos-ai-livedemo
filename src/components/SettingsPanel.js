@@ -13,6 +13,7 @@ const DEFAULTS = {
     videoInterval: 2000,
     videoQuality: 0.4,
     emotionToolMode: 'unified',
+    piiScrubbing: true,
 };
 
 const STORAGE_KEY = 'sanemos_settings';
@@ -70,7 +71,11 @@ export default function SettingsPanel({ settings, onChange }) {
     };
 
     const resetDemo = () => {
-        try { localStorage.removeItem('sanemos_onboarding_done'); } catch {}
+        try {
+            localStorage.removeItem('sanemos_onboarding_done');
+            localStorage.removeItem('sanemos_diary');
+            localStorage.removeItem('sanemos_appointments');
+        } catch {}
         setDemoReset(true);
         setTimeout(() => setDemoReset(false), 3000);
     };
@@ -167,6 +172,22 @@ export default function SettingsPanel({ settings, onChange }) {
                             {settings.transcription ? t('settings.on') : t('settings.off')}
                         </button>
                         <p className="text-[10px] text-gray-500 leading-tight">{t('settings.transcriptionHint')}</p>
+                    </div>
+
+                    {/* PII Scrubbing toggle */}
+                    <div className="space-y-1.5">
+                        <span className="text-xs font-medium text-gray-300">{t('settings.piiScrubbing')}</span>
+                        <button
+                            onClick={() => update('piiScrubbing', !settings.piiScrubbing)}
+                            className={`w-full py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                                settings.piiScrubbing
+                                    ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                                    : 'bg-white/5 text-gray-500 border border-white/5'
+                            }`}
+                        >
+                            {settings.piiScrubbing ? t('settings.on') : t('settings.off')}
+                        </button>
+                        <p className="text-[10px] text-gray-500 leading-tight">{t('settings.piiScrubbingHint')}</p>
                     </div>
 
                     {/* Video Interval */}
