@@ -8,6 +8,7 @@ import { I18nProvider } from '@/i18n/I18nContext';
 /* ------------------------------------------------------------------ */
 
 const AGENTS = [
+  { id: 'sofia',  name: 'Sofía',  role: 'Welcome & Routing',   color: '#5FB7A6', emoji: '\uD83D\uDC4B', isReceptionist: true },
   { id: 'luna',   name: 'Luna',   role: 'Empathic Listening',  color: '#7B8FD4', emoji: '\uD83C\uDF19' },
   { id: 'marco',  name: 'Marco',  role: 'Grief Guide',         color: '#6B9E8A', emoji: '\uD83E\uDDED' },
   { id: 'serena', name: 'Serena', role: 'Mindfulness',         color: '#D4A574', emoji: '\uD83E\uDDD8' },
@@ -22,6 +23,7 @@ const TOOL_GROUPS = [
     title: 'Emotion Tools',
     color: '#F59E0B',
     tools: ['report_text_emotion', 'report_voice_emotion', 'report_facial_emotion'],
+    notes: 'Excluded for Sofía (receptionist)',
   },
   {
     title: 'Session Tools',
@@ -38,12 +40,26 @@ const TOOL_GROUPS = [
     color: '#D4A574',
     tools: ['start_breathing_exercise', 'stop_breathing_exercise'],
   },
+  {
+    title: 'Diary & Therapist',
+    color: '#EC4899',
+    tools: ['save_diary_entry', 'send_to_therapist', 'schedule_appointment'],
+    notes: 'Excluded for Faro',
+  },
+  {
+    title: 'Sofía-only',
+    color: '#5FB7A6',
+    tools: ['mark_onboarding_done'],
+  },
 ];
 
 const FEATURES = [
   'Real-time emotion tracking (text + voice + facial)',
   'Crisis detection & automatic escalation to Faro',
   'Voice-based agent switching',
+  'Receptionist bot (Sofía) with onboarding & routing',
+  'Personal Diary with localStorage persistence',
+  'Therapist integration & appointment scheduling',
   'Social media post generation',
   'Breathing exercise visualization',
   'Session summary with AI recap',
@@ -352,6 +368,11 @@ function ArchitectureContent() {
                       </li>
                     ))}
                   </ul>
+                  {g.notes && (
+                    <p className="text-[10px] text-gray-500 italic mt-2 border-t border-gray-700 pt-2">
+                      {g.notes}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
