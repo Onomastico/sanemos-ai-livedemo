@@ -86,9 +86,12 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
         switchAgent, connect, disconnect
     } = useGeminiLive(apiKey, initialAgent, handleEscalateToFaro, () => handleExitRef.current?.(), handleSwitchAgent, translatedContext, userCountry, geminiSettings, locale, isFirstVisit);
 
-    // Register callback so dismiss_modal voice command can close the summary
+    // Register callback so dismiss_modal voice command can close all component-level modals
     useEffect(() => {
-        dismissSummaryCallbackRef.current = () => setShowSummary(false);
+        dismissSummaryCallbackRef.current = () => {
+            setShowSummary(false);
+            setShowTherapist(false);
+        };
         return () => { dismissSummaryCallbackRef.current = null; };
     }, [dismissSummaryCallbackRef]);
 
@@ -258,16 +261,23 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                                 }`}
                                 style={m.sender === 'ai' ? { backgroundColor: activeColor + '15' } : {}}
                             >
-                                {m.sender === 'ai' && (
-                                    <span className="text-[10px] font-medium block mb-1" style={{ color: activeColor + '90' }}>
-                                        {activeName}
-                                    </span>
-                                )}
-                                {m.sender === 'user' && (
-                                    <span className="text-[10px] font-medium block mb-1 text-fg/40">
-                                        {t('session.you')}
-                                    </span>
-                                )}
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                    {m.sender === 'ai' && (
+                                        <span className="text-[10px] font-medium" style={{ color: activeColor + '90' }}>
+                                            {activeName}
+                                        </span>
+                                    )}
+                                    {m.sender === 'user' && (
+                                        <span className="text-[10px] font-medium text-fg/40">
+                                            {t('session.you')}
+                                        </span>
+                                    )}
+                                    {m.timestamp && (
+                                        <span className="text-[9px] text-fg/30 tabular-nums">
+                                            {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                        </span>
+                                    )}
+                                </div>
                                 {maskPII(m.text)}
                             </div>
                         </div>
@@ -308,14 +318,15 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                         {/* Feature hints */}
                         {!isFaroMode && status === 'connected' && (
                             <>
+                                {/* Voice command hints — dashed border, not directly clickable */}
                                 <div className="relative">
                                     <button
                                         onClick={() => setActiveTooltip(activeTooltip === 'post' ? null : 'post')}
                                         onMouseEnter={() => setActiveTooltip('post')}
                                         onMouseLeave={() => setActiveTooltip(null)}
-                                        className="flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-md transition-colors text-xs font-medium border bg-fg/5 border-fg/8 text-fg-secondary hover:bg-fg/10"
+                                        className="flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-md transition-colors text-xs font-medium border border-dashed border-fg/15 text-fg-secondary/70 hover:text-fg-secondary hover:border-fg/25 cursor-help"
                                     >
-                                        <span className="text-sm">📝</span>
+                                        <span className="text-sm opacity-70">📝</span>
                                         {t('session.post')}
                                     </button>
                                     {activeTooltip === 'post' && (
@@ -331,9 +342,9 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                                             onClick={() => setActiveTooltip(activeTooltip === 'breathing' ? null : 'breathing')}
                                             onMouseEnter={() => setActiveTooltip('breathing')}
                                             onMouseLeave={() => setActiveTooltip(null)}
-                                            className="flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-md transition-colors text-xs font-medium border bg-fg/5 border-fg/8 text-fg-secondary hover:bg-fg/10"
+                                            className="flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-md transition-colors text-xs font-medium border border-dashed border-fg/15 text-fg-secondary/70 hover:text-fg-secondary hover:border-fg/25 cursor-help"
                                         >
-                                            <span className="text-sm">🌬️</span>
+                                            <span className="text-sm opacity-70">🌬️</span>
                                             {t('session.breathe')}
                                         </button>
                                         {activeTooltip === 'breathing' && (
@@ -344,18 +355,17 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                                         )}
                                     </div>
                                 )}
-                                {/* Diary button */}
+                                {/* Action buttons — solid style, directly clickable */}
                                 <button
                                     onClick={() => setShowDiaryModal(true)}
-                                    className="flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-md transition-colors text-xs font-medium border bg-fg/5 border-fg/8 text-fg-secondary hover:bg-fg/10"
+                                    className="flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-md transition-colors text-xs font-medium border border-fg/10 bg-fg/5 text-fg-secondary hover:bg-fg/10 hover:text-fg cursor-pointer"
                                 >
                                     <span className="text-sm">📔</span>
                                     {t('session.diary')}
                                 </button>
-                                {/* Appointments button */}
                                 <button
                                     onClick={() => setShowAppointmentsModal(true)}
-                                    className="flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-md transition-colors text-xs font-medium border bg-fg/5 border-fg/8 text-fg-secondary hover:bg-fg/10"
+                                    className="flex items-center gap-1.5 px-3 py-2 rounded-full backdrop-blur-md transition-colors text-xs font-medium border border-fg/10 bg-fg/5 text-fg-secondary hover:bg-fg/10 hover:text-fg cursor-pointer"
                                 >
                                     <span className="text-sm">📅</span>
                                     {t('session.appointments')}
@@ -576,6 +586,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                 <SocialPostModal
                     post={socialPost}
                     agentColor={activeColor}
+                    apiKey={apiKey}
                     onClose={() => setSocialPost(null)}
                 />
             )}
@@ -600,6 +611,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                 onClose={() => setShowTherapist(false)}
                 summaryText={therapistAction?.summary_text || ''}
                 locale={locale}
+                setUiToast={setUiToast}
             />
 
             {/* Appointment Modal */}
@@ -608,7 +620,9 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                 onClose={() => setShowAppointment(false)}
                 locale={locale}
                 onBooking={() => {
-                    // Show toast when appointment is booked
+                    setShowAppointment(false);
+                    setUiToast('📅 Cita agendada');
+                    setTimeout(() => setUiToast(null), 3000);
                 }}
             />
 

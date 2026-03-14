@@ -2,9 +2,9 @@
 
 ## Qué es Sanemos AI Live
 
-Sanemos AI Live es una plataforma de acompañamiento emocional en duelo que utiliza la **Gemini Multimodal Live API** para crear conversaciones de voz en tiempo real con agentes de IA especializados. Todo el procesamiento ocurre client-side a través de WebSocket directo con Gemini, logrando latencia ultrabaja sin servidor intermedio.
+Sanemos AI Live es una plataforma de acompañamiento emocional en duelo que utiliza la **Google GenAI SDK** (`@google/genai`) con la **Gemini Multimodal Live API** para crear conversaciones de voz en tiempo real con agentes de IA especializados. Todo el procesamiento ocurre client-side a través del SDK, logrando latencia ultrabaja sin servidor intermedio.
 
-**Stack:** Next.js 16 · React 19 · Tailwind CSS v4 · Gemini Multimodal Live API (WebSocket) · Gemini REST API (resumen)
+**Stack:** Next.js 16 · React 19 · Tailwind CSS v4 · @google/genai SDK · Gemini Live API · Gemini REST API
 
 ---
 
@@ -12,7 +12,7 @@ Sanemos AI Live es una plataforma de acompañamiento emocional en duelo que util
 
 ### Conexión con Gemini
 
-- **Protocolo:** WebSocket directo a `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent`
+- **SDK:** `@google/genai` — `ai.live.connect()` para sesiones Live, `ai.models.generateContent()` para resúmenes
 - **Modelo:** `models/gemini-2.5-flash-native-audio-preview-12-2025`
 - **Audio de entrada:** Captura de micrófono a 16kHz (ScriptProcessor), convertido a PCM Int16 → Base64, enviado como `realtimeInput.mediaChunks`
 - **Audio de salida:** PCM a 24kHz recibido del servidor, playback gapless con AudioContext de 24kHz usando `source.start(scheduledTime)`

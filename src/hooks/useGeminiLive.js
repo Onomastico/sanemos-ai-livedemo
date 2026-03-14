@@ -2,8 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { resetPIIMappings } from '@/lib/piiScrubber';
 import { getAvailableSlots, bookAppointment } from '@/lib/therapist';
-
-const GEMINI_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+import { GoogleGenAI, Modality } from '@google/genai';
 
 function buildSystemPrompt(basePrompt, userContext, userCountry, locale, agentId) {
     const lang = locale === 'es' ? 'Spanish' : 'English';
@@ -33,11 +32,17 @@ function buildSystemPrompt(basePrompt, userContext, userCountry, locale, agentId
 function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
     const emotionEnum = ["sadness", "anger", "fear", "guilt", "hope", "calm", "love", "numbness"];
 
-    const declarations = [
-        {
+    const declarations = [];
+
+    // Faro should NOT be able to escalate to itself
+    if (agentId !== 'faro') {
+        declarations.push({
             name: "escalate_to_crisis_faro",
             description: "Call this tool IMMEDIATELY if the user expresses suicidal thoughts, self-harm, or severe distress. Do not hesitate."
-        },
+        });
+    }
+
+    declarations.push(
         {
             name: "end_session",
             description: "Call this tool when the user wants to end the conversation, leave the session, or says goodbye. Say a warm farewell message BEFORE calling this tool."
@@ -57,7 +62,7 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
                 required: ["agent_id"]
             }
         }
-    ];
+    );
 
     // Emotion tools — NOT available for Sofia (receptionist)
     if (agentId !== 'sofia') {
@@ -65,6 +70,7 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
             declarations.push({
                 name: "report_emotions",
                 description: "Report detected emotions from text content, voice tone, and optionally facial expression. Call once silently after each user turn. Never mention this tool.",
+                behavior: "NON_BLOCKING",
                 parameters: {
                     type: "OBJECT",
                     properties: {
@@ -83,16 +89,19 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
                 {
                     name: "report_text_emotion",
                     description: "Report the primary emotion detected from the CONTENT/MEANING of the user's words. Call silently after each user turn. Never mention this tool to the user.",
+                    behavior: "NON_BLOCKING",
                     parameters: { type: "OBJECT", properties: { emotion: { type: "STRING", enum: emotionEnum }, intensity: { type: "INTEGER", description: "Intensity from 1 (mild) to 5 (overwhelming)" } }, required: ["emotion", "intensity"] }
                 },
                 {
                     name: "report_voice_emotion",
                     description: "Report the emotion detected from the user's TONE OF VOICE. Call silently after each user turn. Never mention this tool.",
+                    behavior: "NON_BLOCKING",
                     parameters: { type: "OBJECT", properties: { emotion: { type: "STRING", enum: emotionEnum }, intensity: { type: "INTEGER", description: "Intensity from 1 (mild) to 5 (overwhelming)" } }, required: ["emotion", "intensity"] }
                 },
                 {
                     name: "report_facial_emotion",
                     description: "Report the emotion detected from the user's FACIAL EXPRESSION. Only call when camera is active. Call silently. Never mention this tool.",
+                    behavior: "NON_BLOCKING",
                     parameters: { type: "OBJECT", properties: { emotion: { type: "STRING", enum: emotionEnum }, intensity: { type: "INTEGER", description: "Intensity from 1 (mild) to 5 (overwhelming)" } }, required: ["emotion", "intensity"] }
                 }
             );
@@ -273,6 +282,8 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
     const speakingTimeoutRef = useRef(null);
     const pendingSwitchRef = useRef(false);
     const pendingSwitchContextRef = useRef(null);
+    const pendingSwitchAgentIdRef = useRef(null);
+    const pauseAudioInputRef = useRef(false);
     const closingIntentionallyRef = useRef(false);
     const videoStreamRef = useRef(null);
     const canvasRef = useRef(null);
@@ -297,12 +308,15 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
     const autoReconnectRef = useRef(false);
     const autoReconnectJustHappenedRef = useRef(false);
     const reconnectCountRef = useRef(0);
+    const reconnectStabilityTimerRef = useRef(null);
+    const sessionIdCounterRef = useRef(0);
+    const activeSessionIdRef = useRef(0);
 
     // Finalize the current in-progress message → push to completed messages
     const finalizeCurrentMessage = () => {
         const cur = currentMsgRef.current;
         if (cur && cur.text.trim()) {
-            setMessages(prev => [...prev, { text: cur.text.trim(), sender: cur.sender }]);
+            setMessages(prev => [...prev, { text: cur.text.trim(), sender: cur.sender, timestamp: cur.timestamp || Date.now() }]);
         }
         currentMsgRef.current = null;
         setCurrentMessage(null);
@@ -334,9 +348,9 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
             // Different speaker — finalize previous, start new
             if (cur && cur.text.trim()) {
                 clearTimeout(turnCompleteTimerRef.current);
-                setMessages(prev => [...prev, { text: cur.text.trim(), sender: cur.sender }]);
+                setMessages(prev => [...prev, { text: cur.text.trim(), sender: cur.sender, timestamp: cur.timestamp || Date.now() }]);
             }
-            currentMsgRef.current = { text: cleaned, sender };
+            currentMsgRef.current = { text: cleaned, sender, timestamp: Date.now() };
         }
         setCurrentMessage({ ...currentMsgRef.current });
     };
@@ -364,402 +378,475 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
 
         try {
             const safeApiKey = typeof apiKey === 'string' ? apiKey.trim() : "";
-            const url = `${GEMINI_WS_URL}?key=${safeApiKey}`;
-            const ws = new WebSocket(url);
-            wsRef.current = ws;
+            const ai = new GoogleGenAI({ apiKey: safeApiKey });
 
-            ws.onopen = () => {
-                closingIntentionallyRef.current = false;
-                reconnectCountRef.current = 0;
-                setStatus('connected');
-                // Gemini Multimodal Live API requires an initial "setup" message 
-                // to configure the model, system prompt, and tools.
-                const s = settingsRef.current || {};
-                const genConfig = {
-                    responseModalities: ["AUDIO"],
-                    speechConfig: {
-                        voiceConfig: {
-                            prebuiltVoiceConfig: {
-                                voiceName: agent.voiceName || 'Aoede'
-                            }
+            const s = settingsRef.current || {};
+            const config = {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: {
+                    voiceConfig: {
+                        prebuiltVoiceConfig: {
+                            voiceName: agent.voiceName || 'Aoede'
                         }
                     }
-                };
-                // Apply tuning parameters from settings
-                if (s.temperature !== undefined) genConfig.temperature = s.temperature;
-                if (s.topK !== undefined) genConfig.topK = s.topK;
-                if (s.topP !== undefined) genConfig.topP = s.topP;
-                if (s.thinkingBudget !== undefined) genConfig.thinkingConfig = { thinkingBudget: s.thinkingBudget };
+                },
+                systemInstruction: buildSystemPrompt(agent.systemPrompt, userContextRef.current, userCountryRef.current, localeRef.current, agent.id),
+                tools: [{ functionDeclarations: buildFunctionDeclarations(agent.id, s.emotionToolMode || 'unified') }]
+            };
+            // Apply tuning parameters from settings
+            if (s.temperature !== undefined) config.temperature = s.temperature;
+            if (s.topK !== undefined) config.topK = s.topK;
+            if (s.topP !== undefined) config.topP = s.topP;
+            if (s.thinkingBudget !== undefined) config.thinkingConfig = { thinkingBudget: s.thinkingBudget };
+            // Transcription — conditional based on settings
+            if (s.transcription !== false) {
+                config.inputAudioTranscription = {};
+                config.outputAudioTranscription = {};
+            }
 
-                const setupPayload = {
-                    model: "models/gemini-2.5-flash-native-audio-preview-12-2025",
-                    generationConfig: genConfig,
-                    systemInstruction: {
-                        parts: [{ text: buildSystemPrompt(agent.systemPrompt, userContextRef.current, userCountryRef.current, localeRef.current, agent.id) }]
+            // Session ID for stale callback detection (replaces wsRef.current !== ws pattern)
+            const mySessionId = ++sessionIdCounterRef.current;
+            activeSessionIdRef.current = mySessionId;
+
+            const session = await ai.live.connect({
+                model: "models/gemini-2.5-flash-native-audio-preview-12-2025",
+                config,
+                callbacks: {
+                    onopen: () => {
+                        // SDK handles setup message internally
                     },
-                    tools: [
-                        {
-                            functionDeclarations: buildFunctionDeclarations(agent.id, s.emotionToolMode || 'unified')
-                        }
-                    ]
-                };
-                // Transcription — conditional based on settings
-                if (s.transcription !== false) {
-                    setupPayload.inputAudioTranscription = {};
-                    setupPayload.outputAudioTranscription = {};
-                }
+                    onmessage: (msg) => {
+                        try {
+                            if (activeSessionIdRef.current !== mySessionId) return;
 
-                const setupMessage = { setup: setupPayload };
-                ws.send(JSON.stringify(setupMessage));
-                // Small delay to ensure setup is acknowledged before blasting audio
-                setTimeout(() => {
-                    startAudioCapture();
-                    // Send a context message to prime the agent to speak first
-                    const contextMsg = pendingSwitchContextRef.current;
-                    pendingSwitchContextRef.current = null;
-                    // For Sofia on initial connect (no switch context), auto-greet
-                    // On auto-reconnect, don't re-greet — just resume
-                    const isReconnect = autoReconnectJustHappenedRef.current;
-                    autoReconnectJustHappenedRef.current = false;
-                    let primeMsg = contextMsg || null;
-                    if (!primeMsg) {
-                        if (isReconnect) {
-                            // On auto-reconnect, send a resume prime so the agent re-engages
-                            primeMsg = 'The session was briefly interrupted by a network issue. Continue the conversation naturally — greet the user again briefly and ask how you can help.';
-                        } else if (agent.isReceptionist) {
-                            primeMsg = 'The user just arrived. Greet them warmly and start the conversation.';
-                        }
-                    }
-                    if (primeMsg) {
-                        setTimeout(() => {
-                            if (ws.readyState === WebSocket.OPEN) {
-                                ws.send(JSON.stringify({
-                                    clientContent: {
-                                        turns: [{ role: "user", parts: [{ text: primeMsg }] }],
-                                        turnComplete: true
+                            // Debug: log message types received
+                            const msgKeys = [];
+                            if (msg.serverContent?.modelTurn) msgKeys.push('modelTurn');
+                            if (msg.serverContent?.inputTranscription || msg.serverContent?.input_transcription) msgKeys.push('inputTranscript');
+                            if (msg.serverContent?.outputTranscription || msg.serverContent?.output_transcription) msgKeys.push('outputTranscript');
+                            if (msg.serverContent?.turnComplete) msgKeys.push('turnComplete');
+                            if (msg.toolCall) msgKeys.push('toolCall:' + (msg.toolCall.functionCalls?.map(c => c.name).join(',') || '?'));
+                            if (msgKeys.length) console.log(`📩 [${new Date().toLocaleTimeString()}] ${msgKeys.join(' | ')}`);
+
+                            // Handle audio playback from model + latency measurement
+                            if (msg.serverContent?.modelTurn?.parts) {
+                                // Measure latency on first audio chunk of a response
+                                if (lastAudioSentRef.current) {
+                                    const rtt = Math.round(performance.now() - lastAudioSentRef.current);
+                                    lastAudioSentRef.current = null;
+                                    latencyHistoryRef.current.push(rtt);
+                                    if (latencyHistoryRef.current.length > 5) latencyHistoryRef.current.shift();
+                                    const avg = Math.round(latencyHistoryRef.current.reduce((a, b) => a + b, 0) / latencyHistoryRef.current.length);
+                                    setLatency(avg);
+                                }
+                                for (const part of msg.serverContent.modelTurn.parts) {
+                                    if (part.inlineData?.mimeType?.startsWith('audio/pcm') && part.inlineData?.data) {
+                                        playPcmAudio(part.inlineData.data);
                                     }
-                                }));
+                                }
                             }
-                        }, 150);
-                    }
-                }, 250);
-            };
 
-            ws.onmessage = async (event) => {
-                try {
-                    // Gemini returns JSON for setup, but real data might be Blob or text JSON
-                    const dataStr = event.data instanceof Blob ? await event.data.text() : event.data;
-                    const msg = JSON.parse(dataStr);
+                            // Handle transcriptions — accumulate fragments into full messages
+                            const sc = msg.serverContent;
+                            const inputText = (sc?.inputTranscription?.text || sc?.input_transcription?.text || '').trim();
+                            const outputText = (sc?.outputTranscription?.text || sc?.output_transcription?.text || '').trim();
 
-                    // Handle audio playback from model + latency measurement
-                    if (msg.serverContent?.modelTurn?.parts) {
-                        // Measure latency on first audio chunk of a response
-                        if (lastAudioSentRef.current) {
-                            const rtt = Math.round(performance.now() - lastAudioSentRef.current);
-                            lastAudioSentRef.current = null;
-                            latencyHistoryRef.current.push(rtt);
-                            if (latencyHistoryRef.current.length > 5) latencyHistoryRef.current.shift();
-                            const avg = Math.round(latencyHistoryRef.current.reduce((a, b) => a + b, 0) / latencyHistoryRef.current.length);
-                            setLatency(avg);
-                        }
-                        for (const part of msg.serverContent.modelTurn.parts) {
-                            if (part.inlineData?.mimeType?.startsWith('audio/pcm') && part.inlineData?.data) {
-                                playPcmAudio(part.inlineData.data);
+                            if (inputText) {
+                                console.log(`🗣️ [${new Date().toLocaleTimeString()}] USER transcript: "${inputText}"`);
+                                appendFragment(inputText, 'user');
                             }
-                        }
-                    }
-
-                    // Handle transcriptions — accumulate fragments into full messages
-                    const sc = msg.serverContent;
-                    const inputText = (sc?.inputTranscription?.text || sc?.input_transcription?.text || '').trim();
-                    const outputText = (sc?.outputTranscription?.text || sc?.output_transcription?.text || '').trim();
-
-                    if (inputText) appendFragment(inputText, 'user');
-                    if (outputText) appendFragment(outputText, 'ai');
-
-                    // turnComplete signals end of AI turn — schedule finalize with delay
-                    // to let trailing transcription fragments arrive
-                    if (sc?.turnComplete && currentMsgRef.current?.sender === 'ai') {
-                        scheduleFinalizeAiMessage();
-                    }
-
-                    // Handle Tool Calls — dispatch each call and send toolResponse
-                    if (msg.toolCall?.functionCalls) {
-                        const responses = [];
-                        for (const call of msg.toolCall.functionCalls) {
-                            if (call.name === 'escalate_to_crisis_faro') {
-                                console.warn("⚠️ CRISIS DETECTED. RECONNECTING AS FARO.");
-                                if (onEscalateToFaroRef.current) onEscalateToFaroRef.current();
-                                return; // WS will be torn down, no response needed
+                            if (outputText) {
+                                console.log(`🤖 [${new Date().toLocaleTimeString()}] AI transcript: "${outputText}"`);
+                                appendFragment(outputText, 'ai');
                             }
-                            if (call.name === 'end_session') {
-                                console.log("🚪 END SESSION requested by agent.");
-                                closingIntentionallyRef.current = true;
-                                // Wait for farewell audio to finish playing, then exit
-                                let checks = 0;
-                                const waitForAudio = () => {
-                                    checks++;
-                                    if (activeSourcesRef.current <= 0 || checks > 16) {
-                                        // Audio done or 8s max — exit
-                                        if (onEndSessionRef.current) onEndSessionRef.current();
-                                    } else {
-                                        setTimeout(waitForAudio, 500);
+
+                            // turnComplete signals end of AI turn — schedule finalize with delay
+                            // to let trailing transcription fragments arrive
+                            if (sc?.turnComplete && currentMsgRef.current?.sender === 'ai') {
+                                console.log(`✅ [${new Date().toLocaleTimeString()}] AI turnComplete — scheduling finalize`);
+                                scheduleFinalizeAiMessage();
+
+                            }
+
+                            // Handle Tool Calls — dispatch each call and send toolResponse
+                            if (msg.toolCall?.functionCalls) {
+                                const responses = [];
+                                for (const call of msg.toolCall.functionCalls) {
+                                    if (call.name === 'escalate_to_crisis_faro') {
+                                        console.warn("⚠️ CRISIS DETECTED. RECONNECTING AS FARO.");
+                                        pauseAudioInputRef.current = true;
+                                        if (onEscalateToFaroRef.current) onEscalateToFaroRef.current();
+                                        return; // Session will be torn down, no response needed
                                     }
-                                };
-                                // Initial delay to let audio chunks start arriving
-                                setTimeout(waitForAudio, 1500);
-                                return; // Don't send toolResponse — session is ending
-                            }
-                            if (call.name === 'switch_agent') {
-                                const agentId = call.args?.agent_id;
-                                console.log(`🔄 SWITCH AGENT requested: ${agentId}`);
-                                closingIntentionallyRef.current = true;
-                                // Send toolResponse so the server doesn't crash with 1011
-                                if (ws.readyState === WebSocket.OPEN) {
-                                    ws.send(JSON.stringify({
-                                        toolResponse: { functionResponses: [{
-                                            id: call.id,
-                                            response: { result: { success: true } }
-                                        }] }
-                                    }));
-                                }
-                                // Wait for farewell audio to finish, then switch
-                                let switchChecks = 0;
-                                const waitAndSwitch = () => {
-                                    switchChecks++;
-                                    if (activeSourcesRef.current <= 0 || switchChecks > 10) {
-                                        if (onSwitchAgentRef.current) onSwitchAgentRef.current(agentId);
-                                    } else {
-                                        setTimeout(waitAndSwitch, 500);
+                                    if (call.name === 'end_session') {
+                                        console.log("🚪 END SESSION requested by agent.");
+                                        pauseAudioInputRef.current = true;
+                                        closingIntentionallyRef.current = true;
+                                        // Wait for farewell audio to finish playing, then exit
+                                        let checks = 0;
+                                        const waitForAudio = () => {
+                                            checks++;
+                                            if (activeSourcesRef.current <= 0 || checks > 24) {
+                                                // Audio done or 12s max — exit
+                                                if (onEndSessionRef.current) onEndSessionRef.current();
+                                            } else {
+                                                setTimeout(waitForAudio, 500);
+                                            }
+                                        };
+                                        // Initial delay to let audio chunks start arriving
+                                        setTimeout(waitForAudio, 1500);
+                                        return; // Don't send toolResponse — session is ending
                                     }
-                                };
-                                setTimeout(waitAndSwitch, 1000);
-                                return;
-                            }
-                            // Unified emotion tool (1 call per turn)
-                            if (call.name === 'report_emotions') {
-                                const args = call.args || {};
-                                const now = Date.now();
-                                const newEmotion = {};
-                                if (args.text_emotion) {
-                                    const e = { emotion: args.text_emotion, intensity: args.text_intensity || 3 };
-                                    newEmotion.text = e;
-                                    setEmotionHistory(prev => [...prev, { timestamp: now, source: 'text', ...e }]);
-                                }
-                                if (args.voice_emotion) {
-                                    const e = { emotion: args.voice_emotion, intensity: args.voice_intensity || 3 };
-                                    newEmotion.voice = e;
-                                    setEmotionHistory(prev => [...prev, { timestamp: now, source: 'voice', ...e }]);
-                                }
-                                if (args.facial_emotion) {
-                                    const e = { emotion: args.facial_emotion, intensity: args.facial_intensity || 3 };
-                                    newEmotion.facial = e;
-                                    setEmotionHistory(prev => [...prev, { timestamp: now, source: 'facial', ...e }]);
-                                }
-                                setEmotion(prev => ({ ...prev, ...newEmotion }));
-                            }
-                            // Separate emotion tools (3 calls per turn — legacy mode)
-                            if (call.name === 'report_text_emotion') {
-                                const args = call.args || {};
-                                const entry = { emotion: args.emotion, intensity: args.intensity || 3 };
-                                setEmotion(prev => ({ ...prev, text: entry }));
-                                setEmotionHistory(prev => [...prev, { timestamp: Date.now(), source: 'text', ...entry }]);
-                            }
-                            if (call.name === 'report_voice_emotion') {
-                                const args = call.args || {};
-                                const entry = { emotion: args.emotion, intensity: args.intensity || 3 };
-                                setEmotion(prev => ({ ...prev, voice: entry }));
-                                setEmotionHistory(prev => [...prev, { timestamp: Date.now(), source: 'voice', ...entry }]);
-                            }
-                            if (call.name === 'report_facial_emotion') {
-                                const args = call.args || {};
-                                const entry = { emotion: args.emotion, intensity: args.intensity || 3 };
-                                setEmotion(prev => ({ ...prev, facial: entry }));
-                                setEmotionHistory(prev => [...prev, { timestamp: Date.now(), source: 'facial', ...entry }]);
-                            }
-                            if (call.name === 'start_breathing_exercise') {
-                                const args = call.args || {};
-                                setBreathingExercise({
-                                    type: args.type || 'box',
-                                    inhale_seconds: Math.max(args.inhale_seconds || 4, 4),
-                                    hold_seconds: args.hold_seconds || 4,
-                                    exhale_seconds: Math.max(args.exhale_seconds || 4, 4),
-                                    cycles: Math.max(args.cycles || 4, 4)
-                                });
-                            }
-                            if (call.name === 'stop_breathing_exercise') {
-                                setBreathingExercise(null);
-                            }
-                            if (call.name === 'generate_social_post') {
-                                const args = call.args || {};
-                                setSocialPost({ platform: args.platform || 'general', post_text: args.post_text || '', occasion: args.occasion || '' });
-                            }
-                            if (call.name === 'copy_to_clipboard') {
-                                const text = call.args?.text || '';
-                                navigator.clipboard.writeText(text).catch(e => console.warn('Clipboard failed:', e));
-                                setUiToast('Copiado al portapapeles');
-                                setTimeout(() => setUiToast(null), 3000);
-                            }
-                            if (call.name === 'open_url') {
-                                const url = call.args?.url || '';
-                                if (url.startsWith('http://') || url.startsWith('https://')) {
-                                    window.open(url, '_blank');
-                                    setUiToast('Abriendo enlace...');
-                                    setTimeout(() => setUiToast(null), 3000);
-                                }
-                            }
-                            if (call.name === 'dismiss_modal') {
-                                setSocialPost(null);
-                                setShowDiaryModal(false);
-                                setShowAppointmentsModal(false);
-                                if (dismissSummaryCallbackRef.current) dismissSummaryCallbackRef.current();
-                            }
-                            if (call.name === 'show_diary') {
-                                setShowDiaryModal(true);
-                            }
-                            if (call.name === 'show_appointments') {
-                                setShowAppointmentsModal(true);
-                            }
-                            if (call.name === 'save_diary_entry') {
-                                const args = call.args || {};
-                                // Safety check: use messagesRef (not messages) to avoid stale closure
-                                // Also accept if lastSessionDataRef has data (Sofia post-session review)
-                                if (currentMsgRef.current || messagesRef.current.length > 2 || lastSessionDataRef.current) {
-                                    setDiaryAction({ type: 'save', title: args.title });
-                                } else {
-                                    setUiToast('No hay sesión para guardar');
-                                    setTimeout(() => setUiToast(null), 3000);
-                                    // Override toolResponse with failure
-                                    const idx = responses.findIndex(r => r.id === call.id);
-                                    if (idx >= 0) responses.splice(idx, 1);
-                                    responses.push({ id: call.id, response: { result: { success: false, reason: 'No active session to save' } } });
-                                }
-                            }
-                            if (call.name === 'send_to_therapist') {
-                                const args = call.args || {};
-                                if (currentMsgRef.current || messagesRef.current.length > 2 || lastSessionDataRef.current) {
-                                    setTherapistAction({ type: 'send', summary_text: args.summary_text });
-                                } else {
-                                    setUiToast('No hay sesión para enviar');
-                                    setTimeout(() => setUiToast(null), 3000);
-                                    // Override toolResponse with failure
-                                    const idx = responses.findIndex(r => r.id === call.id);
-                                    if (idx >= 0) responses.splice(idx, 1);
-                                    responses.push({ id: call.id, response: { result: { success: false, reason: 'No active session to send' } } });
-                                }
-                            }
-                            if (call.name === 'schedule_appointment') {
-                                // Schedule can happen anytime — open visual picker
-                                setShowAppointment(true);
-                            }
-                            if (call.name === 'book_appointment') {
-                                // Try to auto-book by matching preferred day/time to available slots
-                                const args = call.args || {};
-                                const dayPref = (args.preferred_day || '').toLowerCase();
-                                const timePref = (args.preferred_time || '').toLowerCase();
-                                const slots = getAvailableSlots();
-                                // Normalize time to HH:MM
-                                let targetTime = null;
-                                const timeMatch = timePref.match(/(\d{1,2})[:\s]*(\d{2})?/);
-                                if (timeMatch) {
-                                    let h = parseInt(timeMatch[1]);
-                                    const m = timeMatch[2] || '00';
-                                    if (timePref.includes('pm') && h < 12) h += 12;
-                                    if (timePref.includes('am') && h === 12) h = 0;
-                                    targetTime = `${String(h).padStart(2, '0')}:${m}`;
-                                }
-                                // Match slot by day name/date and time
-                                const matched = slots.find(s => {
-                                    const dStr = s.displayDate.toLowerCase();
-                                    const dayMatch = dayPref && (dStr.includes(dayPref) || s.date.includes(dayPref));
-                                    const timeOk = !targetTime || s.displayTime === targetTime;
-                                    return dayMatch && timeOk;
-                                });
-                                if (matched) {
-                                    bookAppointment(matched);
-                                    // Override the toolResponse for this call with booking details
-                                    const idx = responses.findIndex(r => r.id === call.id);
-                                    if (idx >= 0) responses.splice(idx, 1);
+                                    if (call.name === 'switch_agent') {
+                                        const agentId = call.args?.agent_id;
+                                        console.log(`🔄 SWITCH AGENT requested: ${agentId}`);
+                                        pauseAudioInputRef.current = true;
+                                        pendingSwitchAgentIdRef.current = agentId;
+                                        closingIntentionallyRef.current = true;
+                                        // Send toolResponse so the server doesn't crash with 1011
+                                        if (wsRef.current) {
+                                            try {
+                                                wsRef.current.sendToolResponse({ functionResponses: [{
+                                                    id: call.id,
+                                                    name: call.name,
+                                                    response: { result: { success: true } }
+                                                }] });
+                                            } catch (_) {}
+                                        }
+                                        // Wait for farewell audio to finish, then switch
+                                        let switchChecks = 0;
+                                        const waitAndSwitch = () => {
+                                            switchChecks++;
+                                            if (activeSourcesRef.current <= 0 || switchChecks > 20) {
+                                                pendingSwitchAgentIdRef.current = null; // Clear — switch completing normally
+                                                if (onSwitchAgentRef.current) onSwitchAgentRef.current(agentId);
+                                            } else {
+                                                setTimeout(waitAndSwitch, 500);
+                                            }
+                                        };
+                                        setTimeout(waitAndSwitch, 1000);
+                                        return;
+                                    }
+                                    // Unified emotion tool (1 call per turn)
+                                    if (call.name === 'report_emotions') {
+                                        const args = call.args || {};
+                                        const now = Date.now();
+                                        const newEmotion = {};
+                                        if (args.text_emotion) {
+                                            const e = { emotion: args.text_emotion, intensity: args.text_intensity || 3 };
+                                            newEmotion.text = e;
+                                            setEmotionHistory(prev => [...prev, { timestamp: now, source: 'text', ...e }]);
+                                        }
+                                        if (args.voice_emotion) {
+                                            const e = { emotion: args.voice_emotion, intensity: args.voice_intensity || 3 };
+                                            newEmotion.voice = e;
+                                            setEmotionHistory(prev => [...prev, { timestamp: now, source: 'voice', ...e }]);
+                                        }
+                                        if (args.facial_emotion) {
+                                            const e = { emotion: args.facial_emotion, intensity: args.facial_intensity || 3 };
+                                            newEmotion.facial = e;
+                                            setEmotionHistory(prev => [...prev, { timestamp: now, source: 'facial', ...e }]);
+                                        }
+                                        setEmotion(prev => ({ ...prev, ...newEmotion }));
+                                    }
+                                    // Separate emotion tools (3 calls per turn — legacy mode)
+                                    if (call.name === 'report_text_emotion') {
+                                        const args = call.args || {};
+                                        const entry = { emotion: args.emotion, intensity: args.intensity || 3 };
+                                        setEmotion(prev => ({ ...prev, text: entry }));
+                                        setEmotionHistory(prev => [...prev, { timestamp: Date.now(), source: 'text', ...entry }]);
+                                    }
+                                    if (call.name === 'report_voice_emotion') {
+                                        const args = call.args || {};
+                                        const entry = { emotion: args.emotion, intensity: args.intensity || 3 };
+                                        setEmotion(prev => ({ ...prev, voice: entry }));
+                                        setEmotionHistory(prev => [...prev, { timestamp: Date.now(), source: 'voice', ...entry }]);
+                                    }
+                                    if (call.name === 'report_facial_emotion') {
+                                        const args = call.args || {};
+                                        const entry = { emotion: args.emotion, intensity: args.intensity || 3 };
+                                        setEmotion(prev => ({ ...prev, facial: entry }));
+                                        setEmotionHistory(prev => [...prev, { timestamp: Date.now(), source: 'facial', ...entry }]);
+                                    }
+                                    if (call.name === 'start_breathing_exercise') {
+                                        const args = call.args || {};
+                                        setBreathingExercise({
+                                            type: args.type || 'box',
+                                            inhale_seconds: Math.max(args.inhale_seconds || 4, 4),
+                                            hold_seconds: args.hold_seconds || 4,
+                                            exhale_seconds: Math.max(args.exhale_seconds || 4, 4),
+                                            cycles: Math.max(args.cycles || 4, 4)
+                                        });
+                                    }
+                                    if (call.name === 'stop_breathing_exercise') {
+                                        setBreathingExercise(null);
+                                    }
+                                    if (call.name === 'generate_social_post') {
+                                        const args = call.args || {};
+                                        setSocialPost({ platform: args.platform || 'general', post_text: args.post_text || '', occasion: args.occasion || '' });
+                                    }
+                                    if (call.name === 'copy_to_clipboard') {
+                                        const text = call.args?.text || '';
+                                        navigator.clipboard.writeText(text).catch(e => console.warn('Clipboard failed:', e));
+                                        setUiToast('Copiado al portapapeles');
+                                        setTimeout(() => setUiToast(null), 3000);
+                                    }
+                                    if (call.name === 'open_url') {
+                                        const url = call.args?.url || '';
+                                        if (url.startsWith('http://') || url.startsWith('https://')) {
+                                            window.open(url, '_blank');
+                                            setUiToast('Abriendo enlace...');
+                                            setTimeout(() => setUiToast(null), 3000);
+                                        }
+                                    }
+                                    if (call.name === 'dismiss_modal') {
+                                        setSocialPost(null);
+                                        setShowDiaryModal(false);
+                                        setShowAppointmentsModal(false);
+                                        setShowAppointment(false);
+                                        if (dismissSummaryCallbackRef.current) dismissSummaryCallbackRef.current();
+                                    }
+                                    if (call.name === 'show_diary') {
+                                        setShowDiaryModal(true);
+                                    }
+                                    if (call.name === 'show_appointments') {
+                                        setShowAppointmentsModal(true);
+                                    }
+                                    if (call.name === 'save_diary_entry') {
+                                        const args = call.args || {};
+                                        // Safety check: use messagesRef (not messages) to avoid stale closure
+                                        // Also accept if lastSessionDataRef has data (Sofia post-session review)
+                                        if (currentMsgRef.current || messagesRef.current.length > 2 || lastSessionDataRef.current) {
+                                            setDiaryAction({ type: 'save', title: args.title });
+                                        } else {
+                                            setUiToast('No hay sesión para guardar');
+                                            setTimeout(() => setUiToast(null), 3000);
+                                        }
+                                    }
+                                    if (call.name === 'send_to_therapist') {
+                                        const args = call.args || {};
+                                        if (currentMsgRef.current || messagesRef.current.length > 2 || lastSessionDataRef.current) {
+                                            setTherapistAction({ type: 'send', summary_text: args.summary_text });
+                                        } else {
+                                            setUiToast('No hay sesión para enviar');
+                                            setTimeout(() => setUiToast(null), 3000);
+                                        }
+                                    }
+                                    if (call.name === 'schedule_appointment') {
+                                        // Schedule can happen anytime — open visual picker
+                                        setShowAppointment(true);
+                                    }
+                                    if (call.name === 'book_appointment') {
+                                        // Try to auto-book by matching preferred day/time to available slots
+                                        const args = call.args || {};
+                                        const dayPref = (args.preferred_day || '').toLowerCase().replace(/[,.\-]/g, ' ').replace(/\s+/g, ' ').trim();
+                                        const timePref = (args.preferred_time || '').toLowerCase();
+                                        const slots = getAvailableSlots();
+                                        // Normalize time to HH:MM
+                                        let targetTime = null;
+                                        const timeMatch = timePref.match(/(\d{1,2})[:\s]*(\d{2})?/);
+                                        if (timeMatch) {
+                                            let h = parseInt(timeMatch[1]);
+                                            const m = timeMatch[2] || '00';
+                                            if (timePref.includes('pm') && h < 12) h += 12;
+                                            if (timePref.includes('am') && h === 12) h = 0;
+                                            targetTime = `${String(h).padStart(2, '0')}:${m}`;
+                                        }
+                                        // Match slot by day name/date and time
+                                        // Normalize displayDate too (remove commas/punctuation) for reliable matching
+                                        const matched = slots.find(s => {
+                                            const dStr = s.displayDate.toLowerCase().replace(/[,.\-]/g, ' ').replace(/\s+/g, ' ');
+                                            // Check if all words in dayPref appear in the display date
+                                            const dayWords = dayPref.split(' ').filter(Boolean);
+                                            const dayMatch = dayWords.length > 0 && dayWords.every(w => dStr.includes(w));
+                                            // Also try matching against the raw date string (YYYY-MM-DD)
+                                            const dateMatch = dayPref && s.date.includes(dayPref);
+                                            const timeOk = !targetTime || s.displayTime === targetTime;
+                                            return (dayMatch || dateMatch) && timeOk;
+                                        });
+                                        if (matched) {
+                                            bookAppointment(matched);
+                                            setShowAppointment(false);
+                                        } else {
+                                            // No match — open the manual picker as fallback
+                                            setShowAppointment(true);
+                                        }
+                                    }
+                                    if (call.name === 'mark_onboarding_done') {
+                                        // Mark onboarding as done in localStorage
+                                        localStorage.setItem('sanemos_onboarding_done', 'true');
+                                        setUiToast('¡Bienvenido/a!');
+                                        setTimeout(() => setUiToast(null), 3000);
+                                    }
+                                    // Observation tools (NON_BLOCKING): send toolResponse immediately
+                                    // with scheduling: "SILENT" so model absorbs result without
+                                    // restarting or interrupting its current audio generation
+                                    const silentTools = [
+                                        'report_emotions',
+                                        'report_text_emotion',
+                                        'report_voice_emotion',
+                                        'report_facial_emotion',
+                                        'generate_social_post',
+                                        'save_diary_entry',
+                                        'send_to_therapist',
+                                        'schedule_appointment',
+                                        'book_appointment',
+                                        'show_diary',
+                                        'show_appointments',
+                                        'copy_to_clipboard',
+                                        'open_url',
+                                        'dismiss_modal',
+                                        'start_breathing_exercise',
+                                        'stop_breathing_exercise',
+                                        'mark_onboarding_done'
+                                    ];
+                                    if (silentTools.includes(call.name)) {
+                                        console.log(`👁️ [${new Date().toLocaleTimeString()}] Sending SILENT toolResponse for: ${call.name}`);
+                                        try {
+                                            wsRef.current.sendToolResponse({ functionResponses: [{
+                                                id: call.id,
+                                                name: call.name,
+                                                response: { result: { success: true } },
+                                                scheduling: "SILENT"
+                                            }] });
+                                        } catch (err) {
+                                            console.warn('👁️ SILENT sendToolResponse failed:', err.message || err);
+                                        }
+                                        continue;
+                                    }
+                                    // Queue toolResponse for non-escalation, non-observation calls
                                     responses.push({
                                         id: call.id,
-                                        response: { result: { success: true, booked: true, date: matched.displayDate, time: matched.displayTime } }
-                                    });
-                                } else {
-                                    // No match — open the manual picker as fallback
-                                    setShowAppointment(true);
-                                    const idx = responses.findIndex(r => r.id === call.id);
-                                    if (idx >= 0) responses.splice(idx, 1);
-                                    responses.push({
-                                        id: call.id,
-                                        response: { result: { success: false, reason: 'No matching slot found. The appointment picker has been opened for the user to select manually.' } }
+                                        name: call.name,
+                                        response: { result: { success: true } }
                                     });
                                 }
+                                // Send all toolResponses so the model continues
+                                if (responses.length > 0 && wsRef.current) {
+                                    console.log(`🔧 [${new Date().toLocaleTimeString()}] Sending toolResponse for: ${responses.map(r => r.name).join(', ')}`);
+                                    try {
+                                        wsRef.current.sendToolResponse({ functionResponses: responses });
+                                    } catch (err) {
+                                        console.error('🔧 sendToolResponse FAILED:', err.message || err);
+                                    }
+                                }
                             }
-                            if (call.name === 'mark_onboarding_done') {
-                                // Mark onboarding as done in localStorage
-                                localStorage.setItem('sanemos_onboarding_done', 'true');
-                                setUiToast('¡Bienvenido/a!');
-                                setTimeout(() => setUiToast(null), 3000);
-                            }
-                            // Queue toolResponse for non-escalation calls
-                            responses.push({
-                                id: call.id,
-                                response: { result: { success: true } }
-                            });
+
+                        } catch (e) {
+                            console.error("Message handling error:", e);
                         }
-                        // Send all toolResponses so the model continues
-                        if (responses.length > 0 && ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({
-                                toolResponse: { functionResponses: responses }
-                            }));
-                        }
-                    }
-
-                } catch (e) {
-                    console.error("Message parsing error:", e, "Raw data:", event.data);
-                }
-            };
-
-            ws.onerror = (e) => {
-                if (wsRef.current !== ws || closingIntentionallyRef.current) return;
-                console.error("WebSocket Error:", e);
-                const errorMessage = e && e.message ? e.message : "Ensure your API Key is valid and supports the Multimodal Live API. Check API Key restrictions.";
-                setError(`WebSocket connection failed. ${errorMessage}`);
-                setStatus('disconnected');
-                cleanupAudio();
-            };
-
-            ws.onclose = (event) => {
-                if (wsRef.current !== ws || closingIntentionallyRef.current) return;
-                console.log(`WebSocket closed. Code: ${event.code}, Reason: ${event.reason}`);
-                // 1008 = session expired/not found, 1011 = server internal error (e.g. interrupted mid-generation)
-                // Auto-reconnect transparently for both
-                if (event.code === 1008 || event.code === 1011) {
-                    reconnectCountRef.current += 1;
-                    const count = reconnectCountRef.current;
-                    if (count > 5) {
-                        console.warn(`Too many reconnects (${count}), stopping.`);
-                        setError('Connection lost after multiple retries. Please reconnect manually.');
+                    },
+                    onerror: (e) => {
+                        if (activeSessionIdRef.current !== mySessionId || closingIntentionallyRef.current) return;
+                        console.error("Session Error:", e);
+                        const errorMessage = e && e.message ? e.message : "Ensure your API Key is valid and supports the Multimodal Live API. Check API Key restrictions.";
+                        setError(`Connection failed. ${errorMessage}`);
                         setStatus('disconnected');
                         cleanupAudio();
-                        reconnectCountRef.current = 0;
-                        return;
+                    },
+                    onclose: (event) => {
+                        if (activeSessionIdRef.current !== mySessionId) return;
+                        // If closing intentionally but there's a pending switch that hasn't completed,
+                        // let the 1011/1008 handler complete the switch instead of dropping it
+                        const hasPendingSwitch = !!pendingSwitchAgentIdRef.current;
+                        if (closingIntentionallyRef.current && !hasPendingSwitch) return;
+                        const code = event?.code || 0;
+                        const reason = event?.reason || '';
+                        console.log(`Session closed. Code: ${code}, Reason: ${reason}`);
+                        // 1008 = session expired/not found, 1011 = server internal error
+                        // Auto-reconnect transparently for both
+                        if (code === 1008 || code === 1011) {
+                            // If there's a pending switch_agent, complete the switch instead of reconnecting as same agent
+                            if (pendingSwitchAgentIdRef.current) {
+                                const targetAgentId = pendingSwitchAgentIdRef.current;
+                                pendingSwitchAgentIdRef.current = null;
+                                closingIntentionallyRef.current = false;
+                                console.log(`🔄 WS ${code} during switch — completing switch to ${targetAgentId}`);
+                                cleanupAudio();
+                                wsRef.current = null;
+                                if (onSwitchAgentRef.current) onSwitchAgentRef.current(targetAgentId);
+                                return;
+                            }
+                            reconnectCountRef.current += 1;
+                            const count = reconnectCountRef.current;
+                            if (count > 5) {
+                                console.warn(`Too many reconnects (${count}), stopping.`);
+                                setError('Connection lost after multiple retries. Please reconnect manually.');
+                                setStatus('disconnected');
+                                cleanupAudio();
+                                reconnectCountRef.current = 0;
+                                return;
+                            }
+                            const delay = Math.min(2000 * Math.pow(2, count - 1), 8000);
+                            console.log(`Server error (${code}), auto-reconnecting in ${delay}ms (attempt ${count}/5)...`);
+                            cleanupAudio();
+                            wsRef.current = null;
+                            // Finalize any in-progress message before reconnect to prevent duplication
+                            const pending = currentMsgRef.current;
+                            if (pending && pending.text.trim()) {
+                                setMessages(prev => [...prev, { text: pending.text.trim(), sender: pending.sender, timestamp: pending.timestamp || Date.now() }]);
+                            }
+                            currentMsgRef.current = null;
+                            setCurrentMessage(null);
+                            clearTimeout(turnCompleteTimerRef.current);
+                            autoReconnectRef.current = true;
+                            autoReconnectJustHappenedRef.current = true;
+                            setTimeout(() => connect(), delay);
+                            return;
+                        }
+                        if (code !== 1000 && code !== 1005) {
+                            setError(`Connection closed abnormally: ${code} ${reason}`);
+                        }
+                        setStatus('disconnected');
+                        cleanupAudio();
                     }
-                    const delay = Math.min(500 * Math.pow(2, count - 1), 4000);
-                    console.log(`Server error (${event.code}), auto-reconnecting in ${delay}ms (attempt ${count}/5)...`);
-                    cleanupAudio();
-                    wsRef.current = null;
-                    autoReconnectRef.current = true;
-                    autoReconnectJustHappenedRef.current = true;
-                    setTimeout(() => connect(), delay);
-                    return;
                 }
-                if (event.code !== 1000 && event.code !== 1005) {
-                    setError(`WebSocket closed abnormally: ${event.code} ${event.reason}`);
+            });
+
+            wsRef.current = session;
+            closingIntentionallyRef.current = false;
+            pauseAudioInputRef.current = false;
+            // Only reset reconnect counter for fresh connects, not auto-reconnects.
+            // For auto-reconnects, reset after 30s of stable connection to prevent infinite loops.
+            if (!autoReconnectJustHappenedRef.current) {
+                reconnectCountRef.current = 0;
+            } else {
+                clearTimeout(reconnectStabilityTimerRef.current);
+                reconnectStabilityTimerRef.current = setTimeout(() => { reconnectCountRef.current = 0; }, 30000);
+            }
+            setStatus('connected');
+
+            // Start audio capture
+            startAudioCapture();
+
+            // Send a context message to prime the agent to speak first
+            const contextMsg = pendingSwitchContextRef.current;
+            pendingSwitchContextRef.current = null;
+            // For Sofia on initial connect (no switch context), auto-greet
+            // On auto-reconnect, don't re-greet — just resume
+            const isReconnect = autoReconnectJustHappenedRef.current;
+            autoReconnectJustHappenedRef.current = false;
+            let primeMsg = contextMsg || null;
+            if (!primeMsg) {
+                if (isReconnect) {
+                    // On auto-reconnect, send a resume prime so the agent re-engages
+                    primeMsg = 'The session was briefly interrupted by a network issue. Continue the conversation naturally — greet the user again briefly and ask how you can help.';
+                } else if (agent.isReceptionist) {
+                    primeMsg = 'The user just arrived. Greet them warmly and start the conversation.';
                 }
-                setStatus('disconnected');
-                cleanupAudio();
-            };
+            }
+            if (primeMsg) {
+                setTimeout(() => {
+                    if (wsRef.current) {
+                        try {
+                            wsRef.current.sendClientContent({
+                                turns: [{ role: "user", parts: [{ text: primeMsg }] }],
+                                turnComplete: true
+                            });
+                        } catch (_) {}
+                    }
+                }, 150);
+            }
 
         } catch (err) {
             setError(err.message);
@@ -768,10 +855,9 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
     }, [apiKey, agent.systemPrompt]);
 
     const disconnect = useCallback(() => {
+        closingIntentionallyRef.current = true;
+        activeSessionIdRef.current = 0; // invalidate old session callbacks
         if (wsRef.current) {
-            wsRef.current.onclose = null;
-            wsRef.current.onerror = null;
-            wsRef.current.onmessage = null;
             try { wsRef.current.close(); } catch (_) {}
             wsRef.current = null;
         }
@@ -781,6 +867,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
 
     // Switch to a new agent: disconnect current session and reconnect with new system prompt
     const switchAgent = useCallback((newAgent, contextMessage) => {
+        pendingSwitchAgentIdRef.current = null; // Clear — switch is being executed
         setAgent(newAgent);
         setBreathingExercise(null);
         setEmotion(null);
@@ -788,12 +875,10 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
         if (contextMessage) {
             pendingSwitchContextRef.current = contextMessage;
         }
-        // Detach old WS event handlers BEFORE closing to prevent late 1011/1008 errors
-        // from reaching the UI. This is the definitive fix for the race condition.
+        // Invalidate old session callbacks and close to prevent late 1011/1008 errors
+        closingIntentionallyRef.current = true;
+        activeSessionIdRef.current = 0;
         if (wsRef.current) {
-            wsRef.current.onclose = null;
-            wsRef.current.onerror = null;
-            wsRef.current.onmessage = null;
             try { wsRef.current.close(); } catch (_) {}
             wsRef.current = null;
         }
@@ -809,8 +894,16 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
         }
     }, [agent, connect]);
 
-    // Audio Capture using ScriptProcessor (compatible and doesn't require separate worklet file)
+    // Audio Capture using AudioWorklet (runs on separate thread — immune to main thread jank)
     const startAudioCapture = async () => {
+        // Clean up any existing audio pipeline first (React Strict Mode double-mounts)
+        if (processorRef.current || audioContextRef.current) {
+            console.log('🎤 Cleaning up existing audio pipeline before creating new one');
+            if (processorRef.current) { processorRef.current.disconnect(); processorRef.current = null; }
+            if (audioInputRef.current) { audioInputRef.current.disconnect(); audioInputRef.current = null; }
+            if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); mediaStreamRef.current = null; }
+            if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null; }
+        }
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
@@ -822,55 +915,107 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
             });
             mediaStreamRef.current = stream;
 
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            const audioCtx = new AudioContext({ sampleRate: 16000 });
             audioContextRef.current = audioCtx;
+
+            // Register AudioWorklet processor via inline Blob URL (no separate file needed)
+            const workletCode = `
+                class PcmCaptureProcessor extends AudioWorkletProcessor {
+                    constructor() {
+                        super();
+                        this._buffer = new Float32Array(0);
+                        this._bufferSize = 2048;
+                    }
+                    process(inputs) {
+                        const input = inputs[0];
+                        if (!input || !input[0]) return true;
+                        const channelData = input[0]; // 128 samples per call at 16kHz
+
+                        // Accumulate samples until we have bufferSize worth
+                        const newBuf = new Float32Array(this._buffer.length + channelData.length);
+                        newBuf.set(this._buffer);
+                        newBuf.set(channelData, this._buffer.length);
+                        this._buffer = newBuf;
+
+                        while (this._buffer.length >= this._bufferSize) {
+                            const chunk = this._buffer.slice(0, this._bufferSize);
+                            this._buffer = this._buffer.slice(this._bufferSize);
+
+                            // Convert Float32 to Int16 PCM
+                            const pcm16 = new Int16Array(chunk.length);
+                            for (let i = 0; i < chunk.length; i++) {
+                                let s = Math.max(-1, Math.min(1, chunk[i]));
+                                pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                            }
+
+                            // Compute RMS for voice activity detection
+                            let sum = 0;
+                            for (let i = 0; i < chunk.length; i++) sum += chunk[i] * chunk[i];
+                            const rms = Math.sqrt(sum / chunk.length);
+
+                            this.port.postMessage({ pcm16: pcm16.buffer, rms }, [pcm16.buffer]);
+                        }
+                        return true;
+                    }
+                }
+                registerProcessor('pcm-capture-processor', PcmCaptureProcessor);
+            `;
+            const blob = new Blob([workletCode], { type: 'application/javascript' });
+            const workletUrl = URL.createObjectURL(blob);
+            await audioCtx.audioWorklet.addModule(workletUrl);
+            URL.revokeObjectURL(workletUrl);
 
             const source = audioCtx.createMediaStreamSource(stream);
             audioInputRef.current = source;
 
-            // Deprecated but works seamlessly without bundling a worklet blob URL in Next.js
-            const bufSize = settingsRef.current?.audioBufferSize || 2048;
-            const processor = audioCtx.createScriptProcessor(bufSize, 1, 1);
-            processorRef.current = processor;
+            const workletNode = new AudioWorkletNode(audioCtx, 'pcm-capture-processor');
+            processorRef.current = workletNode;
 
-            processor.onaudioprocess = (e) => {
-                if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                    const inputData = e.inputBuffer.getChannelData(0);
+            // Receive PCM data from the worklet thread
+            let audioFrameCount = 0;
+            let audioErrorCount = 0;
+            let lastAudioLog = 0;
+            workletNode.port.onmessage = (e) => {
+                if (!wsRef.current) return;
+                const { pcm16, rms } = e.data;
 
-                    // Detect voice activity from RMS level
-                    let sum = 0;
-                    for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
-                    const rms = Math.sqrt(sum / inputData.length);
-                    if (rms > 0.01) {
-                        setIsSpeaking(true);
-                        clearTimeout(speakingTimeoutRef.current);
-                        speakingTimeoutRef.current = setTimeout(() => setIsSpeaking(false), 400);
-                    }
+                // Voice activity detection on main thread (lightweight — just state update)
+                if (rms > 0.01) {
+                    setIsSpeaking(true);
+                    clearTimeout(speakingTimeoutRef.current);
+                    speakingTimeoutRef.current = setTimeout(() => setIsSpeaking(false), 400);
+                }
 
-                    // Convert Float32Array (-1.0 to 1.0) to Int16Array
-                    const pcm16 = new Int16Array(inputData.length);
-                    for (let i = 0; i < inputData.length; i++) {
-                        let s = Math.max(-1, Math.min(1, inputData[i]));
-                        pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-                    }
+                // Convert Int16 PCM buffer to base64
+                const bytes = new Uint8Array(pcm16);
+                const chunks = [];
+                for (let i = 0; i < bytes.length; i += 8192) {
+                    chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + 8192)));
+                }
+                const base64Audio = btoa(chunks.join(''));
 
-                    // Convert to Base64 safely with chunked approach
-                    const bytes = new Uint8Array(pcm16.buffer);
-                    const chunks = [];
-                    for (let i = 0; i < bytes.length; i += 8192) {
-                        chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + 8192)));
-                    }
-                    const base64Audio = btoa(chunks.join(''));
+                audioFrameCount++;
+                const now = performance.now();
+                if (now - lastAudioLog > 5000) {
+                    console.log(`🎤 Audio (Worklet): ${audioFrameCount} frames sent, ${audioErrorCount} errors, RMS=${rms.toFixed(4)}`);
+                    audioFrameCount = 0;
+                    audioErrorCount = 0;
+                    lastAudioLog = now;
+                }
 
-                    lastAudioSentRef.current = performance.now();
-                    wsRef.current.send(JSON.stringify({
-                        realtimeInput: { mediaChunks: [{ mimeType: "audio/pcm;rate=16000", data: base64Audio }] }
-                    }));
+                lastAudioSentRef.current = now;
+                // Pause audio input during destructive tool calls to prevent VAD barge-in canceling the tool call (causes 1011)
+                if (pauseAudioInputRef.current) return;
+                try {
+                    wsRef.current.sendRealtimeInput({ audio: { mimeType: "audio/pcm;rate=16000", data: base64Audio } });
+                } catch (err) {
+                    audioErrorCount++;
+                    if (audioErrorCount <= 3) console.error('🎤 sendRealtimeInput error:', err.message || err);
                 }
             };
 
-            source.connect(processor);
-            processor.connect(audioCtx.destination);
+            source.connect(workletNode);
+            // AudioWorkletNode doesn't need to connect to destination (no output needed)
 
         } catch (err) {
             console.error("Microphone access failed:", err);
@@ -995,14 +1140,12 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
             const vidQuality = settingsRef.current?.videoQuality || 0.4;
             frameIntervalRef.current = setInterval(() => {
                 try {
-                    if (wsRef.current?.readyState === WebSocket.OPEN && video.readyState >= 2) {
+                    if (wsRef.current && video.readyState >= 2) {
                         ctx.drawImage(video, 0, 0, 320, 240);
                         const dataUrl = canvas.toDataURL('image/jpeg', vidQuality);
                         const base64Data = dataUrl.split(',')[1];
                         if (base64Data) {
-                            wsRef.current.send(JSON.stringify({
-                                realtimeInput: { mediaChunks: [{ mimeType: "image/jpeg", data: base64Data }] }
-                            }));
+                            wsRef.current.sendRealtimeInput({ video: { mimeType: "image/jpeg", data: base64Data } });
                         }
                     }
                 } catch (e) {

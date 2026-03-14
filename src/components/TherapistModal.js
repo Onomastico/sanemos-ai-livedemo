@@ -1,7 +1,7 @@
 import { THERAPIST } from '@/lib/therapist';
 import styles from './TherapistModal.module.css';
 
-export default function TherapistModal({ isOpen, onClose, summaryText, locale }) {
+export default function TherapistModal({ isOpen, onClose, summaryText, locale, setUiToast }) {
   const isEs = locale === 'es';
 
   if (!isOpen) return null;
@@ -18,7 +18,10 @@ Saludos,
 [Tu nombre]`;
 
     navigator.clipboard.writeText(emailBody);
-    alert(isEs ? 'Texto copiado al portapapeles' : 'Text copied to clipboard');
+    if (setUiToast) {
+      setUiToast(isEs ? '📋 Texto copiado al portapapeles' : '📋 Text copied to clipboard');
+      setTimeout(() => setUiToast(null), 3000);
+    }
   };
 
   return (

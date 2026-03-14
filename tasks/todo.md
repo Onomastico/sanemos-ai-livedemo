@@ -9,5 +9,5 @@
 - [x] Redesign transcript UI — live subtitles + collapsible history
 - [x] Fix Faro stuck after escalation — send context message to prime agent
 - [x] Fix media stream leak on agent switch
-- [ ] Deploy to Vercel (update NEXT_PUBLIC_GEMINI_API_KEY in dashboard)
 - [x] Set up Bento UI styles for the agent cards
+- [ ] Barge-in (interrupción): detener playback del AI cuando el usuario habla encima. Cambiar activeSourcesRef a array de nodos para poder llamar .stop(), detectar barge-in desde VAD (RMS>0.015 × 3 frames ~150ms), manejar serverContent.interrupted del API, marcar mensajes parciales como [interrumpido]. Ver plan en .claude/plans/shimmying-prancing-kay.md

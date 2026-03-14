@@ -80,6 +80,12 @@
   "social.copyText": "Copy text",
   "social.copied": "Copied!",
   "social.close": "Close",
+  "social.share": "Share",
+  "social.justNow": "Just now",
+  "social.likesCount": "12",
+  "social.commentsCount": "3 comments",
+  "social.generatingImage": "Generating image...",
+  "social.imageUnavailable": "Image unavailable",
 
   "breathing.inhale": "Inhale...",
   "breathing.hold": "Hold...",
