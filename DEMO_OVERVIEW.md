@@ -14,10 +14,10 @@ Sanemos AI Live es una plataforma de acompañamiento emocional en duelo que util
 
 - **SDK:** `@google/genai` — `ai.live.connect()` para sesiones Live, `ai.models.generateContent()` para resúmenes
 - **Modelo:** `models/gemini-2.5-flash-native-audio-preview-12-2025`
-- **Audio de entrada:** Captura de micrófono a 16kHz (ScriptProcessor), convertido a PCM Int16 → Base64, enviado como `realtimeInput.mediaChunks`
-- **Audio de salida:** PCM a 24kHz recibido del servidor, playback gapless con AudioContext de 24kHz usando `source.start(scheduledTime)`
+- **Audio de entrada:** Captura de micrófono a 16kHz (ScriptProcessor), convertido a PCM Int16 → Base64, enviado via `sendRealtimeInput({ audio })`. Audio se pausa automáticamente durante tool calls destructivos (`pauseAudioInputRef`)
+- **Audio de salida:** PCM a 24kHz recibido del servidor, playback gapless con AudioContext de 24kHz usando `source.start(scheduledTime)`. Sources trackeadas en array (`activeSourcesRef`) para `stopAllPlayback()` en barge-in
 - **Transcripción:** Bidireccional (`inputAudioTranscription` + `outputAudioTranscription`) con acumulación de fragmentos y debounce de 600ms en `turnComplete`
-- **Video:** Frames JPEG 320x240 a 0.6 quality, 1 FPS, enviados como `realtimeInput.mediaChunks` con `mimeType: "image/jpeg"`
+- **Video:** Frames JPEG 320x240 a 0.6 quality, 1 FPS, enviados via `sendRealtimeInput({ video })` con `mimeType: "image/jpeg"`
 
 ### Setup Message
 
@@ -123,7 +123,7 @@ Sanemos AI Live es una plataforma de acompañamiento emocional en duelo que util
 - Toggle de cámara en el header (icono + indicador verde cuando activo)
 - Captura de video: `getUserMedia` 640x480, canvas offscreen 320x240
 - Espera `onloadeddata` antes de iniciar captura de frames (previene datos corruptos)
-- Frames JPEG quality 0.6 enviados cada 1 segundo al modelo via `realtimeInput.mediaChunks`
+- Frames JPEG quality 0.6 enviados cada 1 segundo al modelo via `sendRealtimeInput({ video })`
 - **PIP Preview:** Elemento `<video>` de 120x90px en esquina inferior derecha, espejado, con borde y sombra
 - Polling de conexión stream → PIP (hasta 20 intentos/3s) para manejar la asincronía
 - Limpieza completa de tracks y canvas al desactivar o desconectar
@@ -193,7 +193,22 @@ Sanemos AI Live es una plataforma de acompañamiento emocional en duelo que util
 - **ThemeToggle:** Pill de 3 segmentos (sol/monitor/luna)
 - **Persistencia:** localStorage key `sanemos_theme`
 
-### 16. Página de Arquitectura Interactiva
+### 16. Barge-In / Interrupción Graceful
+- **Detección client-side:** RMS del audio capturado > 0.015 durante 3 frames consecutivos (~150ms) mientras AI está hablando
+- **`stopAllPlayback()`:** Detiene todos los `AudioBufferSourceNode` activos, limpia array, resetea `nextPlayTimeRef`
+- **`activeSourcesRef`:** Array de nodos de audio (no contador numérico) para poder `.stop()` cada uno
+- **Mensajes parciales:** Al interrumpir, el mensaje AI en curso se guarda con `…` al final
+- **Server-side:** Handler para `serverContent.interrupted` — el servidor detecta barge-in via su propio VAD y envía señal
+- **System prompt:** Instrucciones de manejo de interrupción inyectadas en TODOS los agentes: no repetir lo dicho, seguir la redirección del usuario, respuestas concisas post-interrupción
+- **`pauseAudioInputRef`:** Flag que pausa `sendRealtimeInput` durante tool calls destructivos (switch_agent, end_session, escalate) para prevenir WS 1011
+
+### 17. Prevención de WS 1011 Durante Tool Calls
+- **Root cause:** El worklet de audio sigue enviando `sendRealtimeInput` mientras el modelo procesa un tool call → el VAD del servidor interpreta como barge-in → cancela el tool call → crash 1011
+- **Mitigación:** `pauseAudioInputRef = true` al recibir tool calls destructivos, se resetea en nueva conexión
+- **`pendingSwitchAgentIdRef`:** Almacena el agente destino durante `switch_agent` para completar el switch si ocurre 1011 durante la transición
+- **Faro self-escalation fix:** `escalate_to_crisis_faro` excluido de las tools de Faro (no puede auto-escalarse)
+
+### 18. Página de Arquitectura Interactiva
 - **Ruta:** `/architecture`
 - **i18n completo:** 60+ claves `arch.*` en ES y EN
 - **ThemeProvider + ThemeToggle + LanguageToggle** integrados
@@ -215,9 +230,10 @@ msg.toolCall.functionCalls → for...of loop:
   ├── start_breathing_exercise → setBreathingExercise({ type, inhale, hold, exhale, cycles })
   ├── stop_breathing_exercise → setBreathingExercise(null)
   ├── generate_social_post → setSocialPost({ platform, post_text, occasion })
+  ├── generate_visual → setVisualContent({ visual_type, description, title }) [Marco & Serena only]
   ├── copy_to_clipboard → navigator.clipboard.writeText() + setUiToast
   ├── open_url → window.open(url, '_blank') + setUiToast
-  ├── dismiss_modal → setSocialPost(null) + setShowDiaryModal(false) + setShowAppointmentsModal(false) + dismissSummaryCallbackRef()
+  ├── dismiss_modal → setSocialPost(null) + setVisualContent(null) + setShowDiaryModal(false) + setShowAppointmentsModal(false) + dismissSummaryCallbackRef()
   ├── show_diary → setShowDiaryModal(true)
   ├── show_appointments → setShowAppointmentsModal(true)
   ├── save_diary_entry → setDiaryAction({ type: 'save', title }) [si messages.length > 2]
@@ -227,20 +243,22 @@ msg.toolCall.functionCalls → for...of loop:
   └── mark_onboarding_done → localStorage.setItem('sanemos_onboarding_done', 'true')
 
 → Envía toolResponse para TODOS los calls no-destructivos:
-  ws.send({ toolResponse: { functionResponses: [{ id, response: { result: { success: true } } }] } })
+  sendToolResponse({ functionResponses: [{ id, name, response: { result: { success: true } }, scheduling: "SILENT" }] })
 ```
 
 Las `functionDeclarations` se construyen dinámicamente por agente:
-- **Todos:** `escalate_to_crisis_faro`, `end_session`, `switch_agent`, UI tools
+- **Todos:** `end_session`, `switch_agent`, UI tools
+- **Todos excepto Faro:** `escalate_to_crisis_faro` (Faro no puede auto-escalarse)
 - **Excepto Sofía:** Emotion tools
 - **Excepto Faro:** `save_diary_entry`, `send_to_therapist`, `schedule_appointment`, `book_appointment`
+- **Solo Marco y Serena:** `generate_visual` (diagramas educativos / imágenes calmantes)
 - **Solo Serena:** `start_breathing_exercise`, `stop_breathing_exercise`
 - **Solo Sofía:** `mark_onboarding_done`
 
 **Edge cases:**
 - `save_diary_entry` y `send_to_therapist` verifican `messages.length > 2` (safety: requieren sesión real)
 - `schedule_appointment` siempre funciona (no requiere sesión previa)
-- Destructive tools (`end_session`, `switch_agent`, `escalate_to_crisis_faro`) no envían `toolResponse`
+- Destructive tools (`end_session`, `switch_agent`, `escalate_to_crisis_faro`) no envían `toolResponse` y activan `pauseAudioInputRef` para prevenir 1011
 
 ---
 
@@ -265,13 +283,14 @@ src/
 │   ├── AppointmentModal.js        # Modal de agendar citas con grid de slots
 │   ├── AppointmentModal.module.css # Estilos de citas
 │   ├── SocialPostModal.js         # Modal de posts de redes sociales
+│   ├── VisualModal.js             # Modal de generación visual (Marco/Serena)
 │   ├── LanguageToggle.js          # Toggle ES/EN
 │   ├── ThemeToggle.js             # Toggle dark/light/system
 │   ├── SettingsPanel.js           # Panel de configuración de API
 │   ├── OnboardingOverlay.js       # Tour de onboarding (legacy)
 │   └── EmotionTimeline.js         # Línea temporal de emociones
 ├── hooks/
-│   └── useGeminiLive.js           # Core hook: WebSocket, audio, video, tools, modales, diary/therapist
+│   └── useGeminiLive.js           # Core hook: SDK Live session, audio, video, tools, modales, diary/therapist
 ├── lib/
 │   ├── agents.js                  # Definición de 8 agentes: Sofía, Luna, Marco, Serena, Alma, Nora, Iris, Faro
 │   ├── diary.js                   # Funciones: loadDiary, saveDiaryEntry, deleteDiaryEntry, formatDiaryDate
@@ -339,9 +358,14 @@ La API key de Google Cloud **no debe tener restricción por HTTP Referrer**, ya 
 
 ## APIs de Google Utilizadas
 
-1. **Gemini Multimodal Live API** (WebSocket) — Conversación de voz bidireccional en tiempo real con function calling
-2. **Gemini REST API** (`gemini-2.5-flash:generateContent`) — Generación de resumen post-sesión
-3. **Google Cloud Run** — Hosting de la aplicación Next.js
+1. **Gemini Multimodal Live API** (WebSocket via `@google/genai` SDK) — Conversación de voz bidireccional en tiempo real con function calling
+2. **Gemini REST API** (`ai.models.generateContent()`) — Generación de resumen post-sesión
+3. **Imagen 4 API** (`ai.models.generateImages()`) — Generación de imágenes para posts sociales y contenido visual
+4. **Google Cloud Run** — Hosting de la aplicación Next.js
+5. **Google Cloud Build** — CI/CD pipeline con `cloudbuild.yaml`
+6. **Google Artifact Registry** — Almacenamiento de imágenes Docker
+
+> Ver `GEMINI_LIVE_BEST_PRACTICES.md` para documentación detallada de lecciones aprendidas y mitigaciones de WS 1011.
 
 ---
 
@@ -365,7 +389,15 @@ La API key de Google Cloud **no debe tener restricción por HTTP Referrer**, ya 
 - Ejercicio de respiración demasiado rápido → mínimos forzados + rest phase + no auto-dismiss
 - Emotion tracking agregado a Faro por error → removido manualmente
 
-### Fase 3: Diary, Therapist, Sofía
+### Fase 3: Barge-In, 1011 Prevention & Agent Fixes
+- Faro se auto-escalaba con `escalate_to_crisis_faro` → excluir de sus tools
+- WS 1011 durante switch_agent por audio continuo → `pauseAudioInputRef` + `pendingSwitchAgentIdRef`
+- WS 1011 durante tool calls destructivos → pausar `sendRealtimeInput` con flag
+- `activeSourcesRef` como número impedía stop individual → cambiar a array de `AudioBufferSourceNode`
+- Barge-in: `currentMsgRef.current` leído después de nullificar → capturar en variable local antes
+- `const sc = msg.serverContent` declarado después de su uso en debug log → mover declaración antes del bloque
+
+### Fase 4: Diary, Therapist, Sofía
 - `save_diary_entry` sin sesión → verificación `messages.length > 2` antes de guardar
 - `send_to_therapist` sin contexto → pasar `summary_text` desde tool args
 - Sofía aparecía en grid de agentes → agregar flag `isReceptionist` + filtro en getAllAgents

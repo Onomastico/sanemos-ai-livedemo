@@ -46,7 +46,7 @@ const TOOL_GROUPS = [
   {
     titleKey: 'arch.toolsDiary',
     color: '#EC4899',
-    tools: ['save_diary_entry', 'send_to_therapist', 'schedule_appointment', 'show_diary', 'show_appointments'],
+    tools: ['save_diary_entry', 'send_to_therapist', 'schedule_appointment', 'book_appointment', 'show_diary', 'show_appointments'],
     notesKey: 'arch.toolsDiaryNote',
   },
   {
@@ -182,6 +182,9 @@ function ArchitectureContent() {
     t('arch.feat11'),
     t('arch.feat12'),
     t('arch.feat13'),
+    t('arch.feat14'),
+    t('arch.feat15'),
+    t('arch.feat16'),
   ];
 
   return (

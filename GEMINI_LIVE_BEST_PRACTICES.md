@@ -31,6 +31,15 @@ The audio worklet continuously sends `sendRealtimeInput` while the model process
 - **Session resumption**: Use `sessionResumption` field in setup config. Cache `SessionResumptionUpdate` tokens (valid 2 hours). On 1011, reconnect with token to resume seamlessly.
 - **Context window compression**: Configure `contextWindowCompression` in setup for sessions beyond 15 min.
 
+## Barge-In / Interruption Handling
+
+- **Server-side**: Server sends `serverContent.interrupted` when its VAD detects user speech during AI output. Immediately stop all playback.
+- **Client-side**: Monitor audio RMS during AI playback. If RMS > threshold (0.015) for N consecutive frames (3 = ~150ms), stop playback client-side for lower latency.
+- **`stopAllPlayback()`**: Track `AudioBufferSourceNode` instances in array. Call `.stop()` on each, clear array, reset scheduled time.
+- **Partial messages**: When interrupted, save AI's partial message with `…` suffix. Don't discard what was already said.
+- **System prompt**: Instruct agents to handle interruptions gracefully: don't repeat, follow user's redirect, be concise after interruption.
+- **Do NOT pause audio input during barge-in**: The user must continue sending audio (it's their turn to speak). `pauseAudioInputRef` is only for destructive tool calls.
+
 ## Audio Best Practices
 
 - Send audio chunks in 20-40ms intervals

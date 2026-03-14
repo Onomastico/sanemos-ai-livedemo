@@ -20,8 +20,10 @@ Users can talk naturally, be interrupted, switch between agents, and access tool
 - **Onboarding Tour** — Sofia guides new users through all 10 features by voice
 - **i18n** — Full Spanish/English support (150+ translation keys)
 - **Dark/Light/System Theme** — Persistent theme with FOUC prevention
+- **Barge-In (Interruption)** — Graceful interruption handling: client-side RMS detection + server VAD, stops AI playback instantly
 - **Auto-Reconnect** — Transparent reconnection on session timeout (1008/1011)
 - **Crisis Detection** — Automatic escalation to Faro crisis agent
+- **WS 1011 Prevention** — Audio input paused during destructive tool calls to prevent server VAD conflicts
 
 ## Tech Stack
 
@@ -120,6 +122,7 @@ Infrastructure-as-code files: [`cloudbuild.yaml`](cloudbuild.yaml) + [`Dockerfil
 |---|---|
 | **Gemini Multimodal Live API** | Real-time bidirectional voice/video AI conversations |
 | **Gemini REST API** | Post-session summary generation |
+| **Imagen 4 API** | AI-generated images for social media posts and visual content |
 | **Cloud Run** | Serverless container hosting |
 | **Cloud Build** | Automated CI/CD pipeline |
 | **Artifact Registry** | Docker image storage |
@@ -133,6 +136,7 @@ src/
 │   ├── GeminiLiveSession.js    # Session UI, modals, transcription
 │   ├── SessionSummary.js       # AI-generated post-session recap
 │   ├── SocialPostModal.js      # Social media post display
+│   ├── VisualModal.js          # Visual generation display (Marco/Serena)
 │   ├── BreathingVisualizer.js  # Breathing exercise visualization
 │   ├── DiaryModal.js           # Personal diary viewer
 │   ├── TherapistModal.js       # Therapist referral

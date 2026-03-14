@@ -6,7 +6,14 @@ import { GoogleGenAI, Modality } from '@google/genai';
 
 function buildSystemPrompt(basePrompt, userContext, userCountry, locale, agentId) {
     const lang = locale === 'es' ? 'Spanish' : 'English';
-    const langInstruction = `LANGUAGE INSTRUCTION: You MUST respond in ${lang}. This is non-negotiable — always speak and respond in ${lang} regardless of the language of the context below.\n\n`;
+    const langInstruction = `LANGUAGE INSTRUCTION: You MUST respond in ${lang}. This is non-negotiable — always speak and respond in ${lang} regardless of the language of the context below.
+
+INTERRUPTION HANDLING: The user may interrupt you while you are speaking. When this happens:
+- Do NOT repeat what you already said — the user heard it before interrupting.
+- Acknowledge their input naturally and address what they are saying now.
+- If they redirect the conversation, follow their lead immediately without summarizing your previous point.
+- Keep your response concise after an interruption — they interrupted because they want to move forward.
+- Never say "as I was saying" or restart your previous response.\n\n`;
 
     let prompt = basePrompt;
 
@@ -217,6 +224,25 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
         }
     }
 
+    // Visual generation tool — only for Marco and Serena
+    if (agentId === 'marco' || agentId === 'serena') {
+        declarations.push({
+            name: "generate_visual",
+            description: agentId === 'marco'
+                ? "Generate an educational illustration or diagram about grief (e.g., stages of grief, dual-process model, waves of grief). Call when explaining a concept that benefits from a visual aid."
+                : "Generate a calming or mindfulness image (e.g., nature scene, mandala, guided imagery visual). Call when offering visual grounding or after a breathing exercise.",
+            parameters: {
+                type: "OBJECT",
+                properties: {
+                    visual_type: { type: "STRING", enum: ["diagram", "illustration", "calming_image"], description: "Type of visual to generate" },
+                    description: { type: "STRING", description: "Detailed description of what the image should show" },
+                    title: { type: "STRING", description: "Short title for the visual (e.g. 'Stages of Grief', 'Peaceful Lake')" }
+                },
+                required: ["visual_type", "description", "title"]
+            }
+        });
+    }
+
     if (agentId === 'serena') {
         declarations.push(
             {
@@ -258,6 +284,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
     const [breathingExercise, setBreathingExercise] = useState(null); // breathing params from Serena
     const [cameraEnabled, setCameraEnabled] = useState(false);
     const [socialPost, setSocialPost] = useState(null);         // { platform, post_text, occasion }
+    const [visualContent, setVisualContent] = useState(null);   // { visual_type, description, title }
     const [uiToast, setUiToast] = useState(null);               // toast message string
     const [latency, setLatency] = useState(null);                // WebSocket latency in ms
     const [emotionHistory, setEmotionHistory] = useState([]);    // emotion timeline data
@@ -278,8 +305,9 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
     const mediaStreamRef = useRef(null);
     const processorRef = useRef(null);
     const nextPlayTimeRef = useRef(0);
-    const activeSourcesRef = useRef(0);
+    const activeSourcesRef = useRef([]);
     const speakingTimeoutRef = useRef(null);
+    const bargeInFrameCountRef = useRef(0);
     const pendingSwitchRef = useRef(false);
     const pendingSwitchContextRef = useRef(null);
     const pendingSwitchAgentIdRef = useRef(null);
@@ -419,17 +447,20 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                         try {
                             if (activeSessionIdRef.current !== mySessionId) return;
 
+                            const sc = msg.serverContent;
+
                             // Debug: log message types received
                             const msgKeys = [];
-                            if (msg.serverContent?.modelTurn) msgKeys.push('modelTurn');
-                            if (msg.serverContent?.inputTranscription || msg.serverContent?.input_transcription) msgKeys.push('inputTranscript');
-                            if (msg.serverContent?.outputTranscription || msg.serverContent?.output_transcription) msgKeys.push('outputTranscript');
-                            if (msg.serverContent?.turnComplete) msgKeys.push('turnComplete');
+                            if (sc?.modelTurn) msgKeys.push('modelTurn');
+                            if (sc?.inputTranscription || sc?.input_transcription) msgKeys.push('inputTranscript');
+                            if (sc?.outputTranscription || sc?.output_transcription) msgKeys.push('outputTranscript');
+                            if (sc?.turnComplete) msgKeys.push('turnComplete');
+                            if (sc?.interrupted) msgKeys.push('interrupted');
                             if (msg.toolCall) msgKeys.push('toolCall:' + (msg.toolCall.functionCalls?.map(c => c.name).join(',') || '?'));
                             if (msgKeys.length) console.log(`📩 [${new Date().toLocaleTimeString()}] ${msgKeys.join(' | ')}`);
 
                             // Handle audio playback from model + latency measurement
-                            if (msg.serverContent?.modelTurn?.parts) {
+                            if (sc?.modelTurn?.parts) {
                                 // Measure latency on first audio chunk of a response
                                 if (lastAudioSentRef.current) {
                                     const rtt = Math.round(performance.now() - lastAudioSentRef.current);
@@ -439,7 +470,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                                     const avg = Math.round(latencyHistoryRef.current.reduce((a, b) => a + b, 0) / latencyHistoryRef.current.length);
                                     setLatency(avg);
                                 }
-                                for (const part of msg.serverContent.modelTurn.parts) {
+                                for (const part of sc.modelTurn.parts) {
                                     if (part.inlineData?.mimeType?.startsWith('audio/pcm') && part.inlineData?.data) {
                                         playPcmAudio(part.inlineData.data);
                                     }
@@ -447,7 +478,6 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                             }
 
                             // Handle transcriptions — accumulate fragments into full messages
-                            const sc = msg.serverContent;
                             const inputText = (sc?.inputTranscription?.text || sc?.input_transcription?.text || '').trim();
                             const outputText = (sc?.outputTranscription?.text || sc?.output_transcription?.text || '').trim();
 
@@ -468,6 +498,20 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
 
                             }
 
+                            // Handle server-side interruption (server VAD detected user barge-in)
+                            if (sc?.interrupted) {
+                                console.log(`🔇 [${new Date().toLocaleTimeString()}] Server interrupted — stopping playback`);
+                                stopAllPlayback();
+                                const pendingMsg = currentMsgRef.current;
+                                if (pendingMsg?.sender === 'ai' && pendingMsg.text.trim()) {
+                                    const partial = pendingMsg.text.trim() + '…';
+                                    setMessages(prev => [...prev, { text: partial, sender: 'ai', timestamp: pendingMsg.timestamp || Date.now() }]);
+                                    currentMsgRef.current = null;
+                                    setCurrentMessage(null);
+                                }
+                                clearTimeout(turnCompleteTimerRef.current);
+                            }
+
                             // Handle Tool Calls — dispatch each call and send toolResponse
                             if (msg.toolCall?.functionCalls) {
                                 const responses = [];
@@ -486,7 +530,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                                         let checks = 0;
                                         const waitForAudio = () => {
                                             checks++;
-                                            if (activeSourcesRef.current <= 0 || checks > 24) {
+                                            if (activeSourcesRef.current.length === 0 || checks > 24) {
                                                 // Audio done or 12s max — exit
                                                 if (onEndSessionRef.current) onEndSessionRef.current();
                                             } else {
@@ -517,7 +561,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                                         let switchChecks = 0;
                                         const waitAndSwitch = () => {
                                             switchChecks++;
-                                            if (activeSourcesRef.current <= 0 || switchChecks > 20) {
+                                            if (activeSourcesRef.current.length === 0 || switchChecks > 20) {
                                                 pendingSwitchAgentIdRef.current = null; // Clear — switch completing normally
                                                 if (onSwitchAgentRef.current) onSwitchAgentRef.current(agentId);
                                             } else {
@@ -585,6 +629,10 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                                         const args = call.args || {};
                                         setSocialPost({ platform: args.platform || 'general', post_text: args.post_text || '', occasion: args.occasion || '' });
                                     }
+                                    if (call.name === 'generate_visual') {
+                                        const args = call.args || {};
+                                        setVisualContent({ visual_type: args.visual_type || 'illustration', description: args.description || '', title: args.title || '' });
+                                    }
                                     if (call.name === 'copy_to_clipboard') {
                                         const text = call.args?.text || '';
                                         navigator.clipboard.writeText(text).catch(e => console.warn('Clipboard failed:', e));
@@ -601,6 +649,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                                     }
                                     if (call.name === 'dismiss_modal') {
                                         setSocialPost(null);
+                                        setVisualContent(null);
                                         setShowDiaryModal(false);
                                         setShowAppointmentsModal(false);
                                         setShowAppointment(false);
@@ -687,6 +736,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                                         'report_voice_emotion',
                                         'report_facial_emotion',
                                         'generate_social_post',
+                                        'generate_visual',
                                         'save_diary_entry',
                                         'send_to_therapist',
                                         'schedule_appointment',
@@ -986,6 +1036,27 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                     speakingTimeoutRef.current = setTimeout(() => setIsSpeaking(false), 400);
                 }
 
+                // Barge-in detection: if user speaks loud enough while AI is playing, stop AI playback
+                if (rms > 0.015 && activeSourcesRef.current.length > 0) {
+                    bargeInFrameCountRef.current++;
+                    if (bargeInFrameCountRef.current >= 3) { // ~150ms of consecutive voice
+                        console.log('🔇 Barge-in detected — stopping AI playback');
+                        stopAllPlayback();
+                        bargeInFrameCountRef.current = 0;
+                        // Finalize partial AI message with ellipsis
+                        const pending = currentMsgRef.current;
+                        if (pending?.sender === 'ai' && pending.text.trim()) {
+                            const partial = pending.text.trim() + '…';
+                            setMessages(prev => [...prev, { text: partial, sender: 'ai', timestamp: pending.timestamp || Date.now() }]);
+                            currentMsgRef.current = null;
+                            setCurrentMessage(null);
+                        }
+                        clearTimeout(turnCompleteTimerRef.current);
+                    }
+                } else {
+                    bargeInFrameCountRef.current = 0;
+                }
+
                 // Convert Int16 PCM buffer to base64
                 const bytes = new Uint8Array(pcm16);
                 const chunks = [];
@@ -1058,13 +1129,12 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
             const startTime = Math.max(now, nextPlayTimeRef.current);
             nextPlayTimeRef.current = startTime + audioBuffer.duration;
 
-            activeSourcesRef.current++;
+            activeSourcesRef.current.push(source);
             setIsAiSpeaking(true);
 
             source.onended = () => {
-                activeSourcesRef.current--;
-                if (activeSourcesRef.current <= 0) {
-                    activeSourcesRef.current = 0;
+                activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== source);
+                if (activeSourcesRef.current.length === 0) {
                     setIsAiSpeaking(false);
                 }
             };
@@ -1074,6 +1144,16 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
         } catch (e) {
             console.error("Audio playback error:", e);
         }
+    };
+
+    // Stop all currently playing audio sources (for barge-in / interruption)
+    const stopAllPlayback = () => {
+        for (const source of activeSourcesRef.current) {
+            try { source.stop(); } catch (_) {}
+        }
+        activeSourcesRef.current = [];
+        nextPlayTimeRef.current = 0;
+        setIsAiSpeaking(false);
     };
 
     const cleanupAudio = () => {
@@ -1110,7 +1190,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
         setCameraEnabled(false);
 
         nextPlayTimeRef.current = 0;
-        activeSourcesRef.current = 0;
+        activeSourcesRef.current = [];
         setIsSpeaking(false);
         setIsAiSpeaking(false);
     };
@@ -1197,6 +1277,8 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
         videoStreamRef,
         socialPost,
         setSocialPost,
+        visualContent,
+        setVisualContent,
         uiToast,
         setUiToast,
         latency,

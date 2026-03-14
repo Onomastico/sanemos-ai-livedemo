@@ -87,6 +87,14 @@
   "social.generatingImage": "Generating image...",
   "social.imageUnavailable": "Image unavailable",
 
+  "visual.typeDiagram": "Diagram",
+  "visual.typeIllustration": "Illustration",
+  "visual.typeCalmingImage": "Calming Image",
+  "visual.generatingImage": "Generating visual...",
+  "visual.imageUnavailable": "Visual unavailable",
+  "visual.download": "Download",
+  "visual.close": "Close",
+
   "breathing.inhale": "Inhale...",
   "breathing.hold": "Hold...",
   "breathing.exhale": "Exhale...",
@@ -347,6 +355,9 @@
   "arch.feat11": "Internationalization (ES / EN)",
   "arch.feat12": "Light / dark / system theme",
   "arch.feat13": "Voice commands for all actions",
+  "arch.feat14": "Barge-in: graceful interruption with client + server detection",
+  "arch.feat15": "Transparent auto-reconnect on timeout (1008/1011)",
+  "arch.feat16": "Deployed on Google Cloud Run with CI/CD",
 
   "arch.dataFlowTitle": "Data Flow Summary",
   "arch.flow1": "User speaks or enables camera. Audio is captured at 16 kHz PCM and sent as binary frames over WebSocket.",

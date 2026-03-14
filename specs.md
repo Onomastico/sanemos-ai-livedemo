@@ -1,9 +1,9 @@
 # Sanemos Live AI Demo — Specifications
 
 ## Overview
-Sanemos Live AI is a Next.js 16 web application that provides real-time, ultra-low latency multimodal emotional support for grief. It uses the Google Gemini Multimodal Live API (WebSocket `BidiGenerateContent`) for native voice-to-voice conversations with 8 specialized AI agents. Everything runs client-side — no intermediate server.
+Sanemos Live AI is a Next.js 16 web application that provides real-time, ultra-low latency multimodal emotional support for grief. It uses the **@google/genai SDK** (`ai.live.connect()`) with the **Gemini Multimodal Live API** for native voice-to-voice conversations with 8 specialized AI agents. Everything runs client-side — no intermediate server.
 
-**Stack:** Next.js 16 · React 19 · Tailwind CSS v4 · Gemini Multimodal Live API (WebSocket) · Gemini REST API (summaries)
+**Stack:** Next.js 16 · React 19 · Tailwind CSS v4 · @google/genai SDK · Gemini Live API · Gemini REST API · Imagen 4
 
 ---
 
@@ -21,22 +21,26 @@ Sanemos Live AI is a Next.js 16 web application that provides real-time, ultra-l
 
 Each agent has: custom `systemPrompt`, avatar PNG, theme color, voice name (Aoede/Orus/Kore/Leda/Fenrir), traits, and focus area.
 
-### 2. Voice Conversation (Gemini Multimodal Live API)
-- **Protocol:** WebSocket to `wss://generativelanguage.googleapis.com/ws/...BidiGenerateContent`
-- **Model:** `gemini-2.5-flash-native-audio-preview-12-2025`
-- **Audio capture:** 16 kHz mono PCM16 via Web Audio API ScriptProcessor → Base64 → `realtimeInput.mediaChunks`
-- **Audio playback:** 24 kHz gapless scheduled playback with dedicated AudioContext
-- **Transcription:** Bidirectional (`inputAudioTranscription` + `outputAudioTranscription`) with 600ms debounce on `turnComplete`
-- **Video (optional):** Camera frames JPEG 320×240 @ 1 FPS sent as `realtimeInput.mediaChunks`
+### 2. Voice Conversation (Gemini Multimodal Live API via @google/genai SDK)
+- **SDK:** `@google/genai` — `ai.live.connect()` for WebSocket sessions
+- **Model:** `models/gemini-2.5-flash-native-audio-preview-12-2025`
+- **Audio capture:** 16 kHz mono PCM16 via Web Audio API ScriptProcessor → Base64 → `sendRealtimeInput({ audio })`
+- **Audio playback:** 24 kHz gapless scheduled playback with dedicated AudioContext, sources tracked in `activeSourcesRef` array
+- **Transcription:** Bidirectional (`inputAudioTranscription` + `outputAudioTranscription` at setup root, camelCase) with 600ms debounce on `turnComplete`
+- **Video (optional):** Camera frames JPEG 320×240 @ 1 FPS sent via `sendRealtimeInput({ video })`
+- **Tool responses:** `sendToolResponse({ functionResponses: [...] })` — requires both `name` and `id`
+- **Barge-in:** Client-side RMS detection (>0.015 × 3 frames) + server `interrupted` signal → `stopAllPlayback()`
+- **WS 1011 prevention:** `pauseAudioInputRef` pauses audio during destructive tool calls; `pendingSwitchAgentIdRef` recovers agent switches on crash
 
 ### 3. Tool System (Function Calling)
 Tools are declared dynamically per agent via `buildFunctionDeclarations`:
 
 | Scope | Tools |
 |-------|-------|
-| All agents | `escalate_to_crisis_faro`, `end_session`, `switch_agent`, `generate_social_post`, `copy_to_clipboard`, `open_url`, `dismiss_modal`, `show_diary`, `show_appointments` |
+| All agents | `end_session`, `switch_agent` |
+| All except Faro | `escalate_to_crisis_faro`, `generate_social_post`, `copy_to_clipboard`, `open_url`, `dismiss_modal`, `show_diary`, `show_appointments`, `save_diary_entry`, `send_to_therapist`, `schedule_appointment`, `book_appointment` |
 | All except Sofía | `report_text_emotion`, `report_voice_emotion`, `report_facial_emotion` (or unified `report_emotions`) |
-| All except Faro | `save_diary_entry`, `send_to_therapist`, `schedule_appointment`, `book_appointment` |
+| Marco & Serena only | `generate_visual` (educational diagrams / calming imagery) |
 | Serena only | `start_breathing_exercise`, `stop_breathing_exercise` |
 | Sofía only | `mark_onboarding_done` |
 
@@ -70,7 +74,7 @@ Tools are declared dynamically per agent via `buildFunctionDeclarations`:
 - **UI:** TherapistModal (info + copy for email) + AppointmentModal (slot grid)
 
 ### 7. Session Summary
-- Generated via Gemini REST API (`gemini-2.5-flash:generateContent`, 4096 max tokens)
+- Generated via `ai.models.generateContent()` (Gemini 2.5 Flash, 4096 max tokens)
 - 4 sections: Emotional Summary, Key Themes, Resources, Closing Message
 - Buttons: Copy, Save to Diary, Send to Therapist, Back to Home
 - Closeable by voice via `dismiss_modal` tool (uses `dismissSummaryCallbackRef`)
@@ -169,6 +173,7 @@ src/
 │   ├── AppointmentModal.js        # Appointment booking slot grid
 │   ├── AppointmentsViewModal.js   # View scheduled appointments
 │   ├── SocialPostModal.js         # Social media post modal
+│   ├── VisualModal.js             # Visual generation modal (Marco/Serena)
 │   ├── EmotionTimeline.js         # Emotion timeline visualization
 │   ├── LanguageToggle.js          # ES/EN toggle
 │   ├── ThemeToggle.js             # Dark/Light/System toggle
@@ -197,11 +202,12 @@ src/
 
 | Package | Version | Usage |
 |---------|---------|-------|
+| @google/genai | ^1.45.0 | Gemini Live API, REST API, Imagen 4 |
 | next | 16.1.6 | Framework (Turbopack) |
 | react | 19.2.3 | UI |
 | tailwindcss | v4 | Styling (CSS-first, zero-config) |
 
-All WebSocket, audio, and video is client-side native browser APIs.
+All audio and video capture/playback uses native browser APIs (Web Audio API, getUserMedia).
 
 ---
 
@@ -229,6 +235,9 @@ API key must NOT have HTTP Referrer restriction (WebSocket doesn't send Referer)
 
 ## Google APIs Used
 
-1. **Gemini Multimodal Live API** (WebSocket) — Real-time bidirectional voice with function calling
-2. **Gemini REST API** (`gemini-2.5-flash:generateContent`) — Post-session summary generation
-3. **Google Cloud Run** — Application hosting
+1. **Gemini Multimodal Live API** (via `@google/genai` SDK — `ai.live.connect()`) — Real-time bidirectional voice with function calling
+2. **Gemini REST API** (`ai.models.generateContent()`) — Post-session summary generation
+3. **Imagen 4 API** (`ai.models.generateImages()`) — AI-generated images for social posts and visual content
+4. **Google Cloud Run** — Application hosting
+5. **Google Cloud Build** — CI/CD pipeline
+6. **Google Artifact Registry** — Container image storage

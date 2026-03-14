@@ -10,4 +10,6 @@
 - [x] Fix Faro stuck after escalation — send context message to prime agent
 - [x] Fix media stream leak on agent switch
 - [x] Set up Bento UI styles for the agent cards
-- [ ] Barge-in (interrupción): detener playback del AI cuando el usuario habla encima. Cambiar activeSourcesRef a array de nodos para poder llamar .stop(), detectar barge-in desde VAD (RMS>0.015 × 3 frames ~150ms), manejar serverContent.interrupted del API, marcar mensajes parciales como [interrumpido]. Ver plan en .claude/plans/shimmying-prancing-kay.md
+- [x] Barge-in (interrupción): activeSourcesRef es array de nodos, stopAllPlayback(), detección client-side (RMS>0.015 × 3 frames), handler serverContent.interrupted, mensajes parciales con …
+- [x] Deploy to Vercel/Cloud Run (update NEXT_PUBLIC_GEMINI_API_KEY)
+- [x] Generate Visual tool para Marco y Serena (diagramas, ilustraciones, guías mindfulness)

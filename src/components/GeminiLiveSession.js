@@ -8,6 +8,7 @@ import { saveDiaryEntry } from '@/lib/diary';
 import { useI18n } from '@/i18n/I18nContext';
 import BreathingVisualizer from './BreathingVisualizer';
 import SocialPostModal from './SocialPostModal';
+import VisualModal from './VisualModal';
 import DiaryModal from './DiaryModal';
 import TherapistModal from './TherapistModal';
 import AppointmentModal from './AppointmentModal';
@@ -74,7 +75,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
         status, agent, messages, currentMessage, error,
         isSpeaking, isAiSpeaking, emotion, breathingExercise, setBreathingExercise,
         cameraEnabled, toggleCamera, videoStreamRef,
-        socialPost, setSocialPost, uiToast, setUiToast,
+        socialPost, setSocialPost, visualContent, setVisualContent, uiToast, setUiToast,
         latency, emotionHistory,
         diaryAction, setDiaryAction,
         therapistAction, setTherapistAction,
@@ -588,6 +589,16 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                     agentColor={activeColor}
                     apiKey={apiKey}
                     onClose={() => setSocialPost(null)}
+                />
+            )}
+
+            {/* Visual Content Modal */}
+            {visualContent && (
+                <VisualModal
+                    visual={visualContent}
+                    agentColor={activeColor}
+                    apiKey={apiKey}
+                    onClose={() => setVisualContent(null)}
                 />
             )}
 

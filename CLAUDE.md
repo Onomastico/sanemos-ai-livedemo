@@ -2,9 +2,9 @@
 
 ## 📋 Descripción del Proyecto
 
-Sanemos AI Live es una plataforma de acompañamiento emocional en duelo con IA conversacional mediante **Gemini Multimodal Live API**. Permite conversaciones de voz bidireccionales en tiempo real con 8 agentes especializados: Sofía (receptionist), Luna, Marco, Serena, Alma, Nora, Iris y Faro (crisis).
+Sanemos AI Live es una plataforma de acompañamiento emocional en duelo con IA conversacional mediante **@google/genai SDK** y la **Gemini Multimodal Live API**. Permite conversaciones de voz bidireccionales en tiempo real con 8 agentes especializados: Sofía (receptionist), Luna, Marco, Serena, Alma, Nora, Iris y Faro (crisis).
 
-**Stack:** Next.js 16 · React 19 · Tailwind CSS v4 · Gemini Live API (WebSocket)
+**Stack:** Next.js 16 · React 19 · Tailwind CSS v4 · @google/genai SDK · Gemini Live API · Imagen 4
 
 ---
 
@@ -31,10 +31,10 @@ Sanemos AI Live es una plataforma de acompañamiento emocional en duelo con IA c
 - Tools: `send_to_therapist`, `schedule_appointment` (picker visual), `book_appointment` (con día/hora)
 
 ### 4. **Conversación de Voz Multimodal**
-- WebSocket directo a Gemini Live API
-- Audio captura (16kHz) + playback (24kHz gapless)
+- `@google/genai` SDK: `ai.live.connect()` para sesiones WebSocket
+- Audio captura (16kHz) via `sendRealtimeInput({ audio })` + playback (24kHz gapless)
 - Transcripción bidireccional con debounce 600ms
-- Video opcional (JPEG 320x240 @ 1fps)
+- Video opcional (JPEG 320x240 @ 1fps) via `sendRealtimeInput({ video })`
 
 ### 5. **Detección de Emociones**
 - Tres emotion tools: `report_text_emotion`, `report_voice_emotion`, `report_facial_emotion`
@@ -54,7 +54,17 @@ Sanemos AI Live es una plataforma de acompañamiento emocional en duelo con IA c
 - CSS variables en `.dark` / `.light` selectors
 - ThemeToggle pill en toolbar (junto a LanguageToggle)
 
-### 8. **Página de Arquitectura**
+### 8. **Barge-In / Interrupción Graceful**
+- Detección client-side: RMS > 0.015 × 3 frames consecutivos (~150ms) mientras AI habla
+- `stopAllPlayback()`: detiene todos los AudioBufferSourceNode, limpia array, resetea playback
+- `activeSourcesRef`: array de nodos (no contador) para stop individual
+- Mensajes parciales guardados con `…` al interrumpir
+- Handler `serverContent.interrupted` del servidor
+- System prompt con instrucciones de interrupción para todos los agentes
+- `pauseAudioInputRef`: pausa audio durante tool calls destructivos (previene WS 1011)
+- `pendingSwitchAgentIdRef`: completa switch_agent si 1011 ocurre durante transición
+
+### 9. **Página de Arquitectura**
 - Diagrama interactivo en `/architecture`
 - Respeta tema de color e idioma (i18n completo con claves `arch.*`)
 - ThemeToggle + LanguageToggle integrados
@@ -66,9 +76,11 @@ Sanemos AI Live es una plataforma de acompañamiento emocional en duelo con IA c
 ### Por Agente
 ```
 TODOS:
-  - escalate_to_crisis_faro (sin toolResponse)
-  - end_session (sin toolResponse)
-  - switch_agent (sin toolResponse)
+  - end_session (sin toolResponse, activa pauseAudioInputRef)
+  - switch_agent (sin toolResponse, activa pauseAudioInputRef + pendingSwitchAgentIdRef)
+
+TODOS EXCEPTO FARO:
+  - escalate_to_crisis_faro (sin toolResponse, activa pauseAudioInputRef)
   - UI tools: generate_social_post, copy_to_clipboard, open_url, dismiss_modal
   - show_diary, show_appointments
 
@@ -81,6 +93,9 @@ EXCEPTO SOFÍA:
 
 EXCEPTO FARO:
   - (todos los anteriores)
+
+SOLO MARCO Y SERENA:
+  - generate_visual (diagramas educativos / imágenes de calma)
 
 SOLO SERENA:
   - start_breathing_exercise
@@ -113,10 +128,12 @@ src/
 │   ├── TherapistModal.js       # Modal terapeuta
 │   ├── AppointmentModal.js     # Modal citas
 │   ├── BreathingVisualizer.js  # Ejercicios respiración
+│   ├── SocialPostModal.js      # Modal posts sociales
+│   ├── VisualModal.js          # Modal generación visual (Marco/Serena)
 │   ├── LanguageToggle.js       # Toggle ES/EN
 │   └── ThemeToggle.js          # Toggle dark/light/system
 ├── hooks/
-│   └── useGeminiLive.js        # WebSocket + handlers + states
+│   └── useGeminiLive.js        # SDK Live session + handlers + states
 ├── theme/
 │   └── ThemeContext.js          # ThemeProvider + useTheme
 └── i18n/
@@ -184,6 +201,11 @@ SessionSummary renderiaza → Usuario clickea "👩‍⚕️ Enviar a Terapeuta"
 - ✅ Debounce 600ms en `turnComplete` para transcripción completa
 - ✅ Playback gapless requiere `source.start(scheduledTime)` preciso
 - ✅ useRef para stale closure en ws.onmessage
+- ✅ WS 1011 durante tool calls → `pauseAudioInputRef` pausa audio en destructive tools
+- ✅ Faro auto-escalación → excluir `escalate_to_crisis_faro` de tools de Faro
+- ✅ switch_agent 1011 → `pendingSwitchAgentIdRef` para completar switch en onclose
+- ✅ Barge-in: `activeSourcesRef` como array + `stopAllPlayback()` + detección RMS client-side
+- ✅ Server `interrupted` handler → stopAllPlayback + mensajes parciales con `…`
 
 ### Diary & Therapist
 - ✅ Verificar `messages.length > 2` antes de save/send
@@ -205,9 +227,10 @@ SessionSummary renderiaza → Usuario clickea "👩‍⚕️ Enviar a Terapeuta"
 - Utilities: `get*`, `format*`, `build*`
 
 ### Tool Calls
-- Destructive (end_session, switch_agent, escalate): `return` sin toolResponse
+- Destructive (end_session, switch_agent, escalate): `return` sin toolResponse + activar `pauseAudioInputRef`
 - No-destructive: siempre enviar toolResponse
 - Safety checks: `messages.length > 2` para diary/therapist
+- Faro no tiene `escalate_to_crisis_faro` (no puede auto-escalarse)
 
 ### i18n Keys
 - Formato: `page.`, `session.`, `diary.`, `therapist.`, `toast.`, `agents.`, `arch.`
@@ -240,6 +263,7 @@ gcloud builds submit --config cloudbuild.yaml \
 ## 📚 Documentación Relacionada
 
 - `DEMO_OVERVIEW.md`: Arquitectura técnica detallada
+- `GEMINI_LIVE_BEST_PRACTICES.md`: Lecciones aprendidas, root cause WS 1011, session management
 - `specs.md`: Especificaciones iniciales
 - `tasks/todo.md`: Tareas pendientes (actualizar según cambios)
 - `src/app/architecture/page.js`: Diagrama interactivo
@@ -263,7 +287,7 @@ gcloud builds submit --config cloudbuild.yaml \
 
 ## 🤝 Notas Finales
 
-- **Prioridad:** Mantener bajo latency (WebSocket directo, no servidor intermediario)
+- **Prioridad:** Mantener bajo latency (@google/genai SDK client-side, no servidor intermediario)
 - **Compatibilidad:** Next.js 16 con Turbopack, React 19
 - **Seguridad:** PII scrubbing client-side, API key en env, no revelar en logs
 - **Accesibilidad:** i18n ES/EN, responsive mobile-first, tema claro/oscuro/sistema
@@ -271,5 +295,5 @@ gcloud builds submit --config cloudbuild.yaml \
 
 ---
 
-**Última actualización:** 2026-03-13
-**Versión:** 0.4 (tema claro/oscuro, burbujas Sofía, tour detallado, book_appointment, dismiss_modal fix, arquitectura i18n)
+**Última actualización:** 2026-03-14
+**Versión:** 0.5 (barge-in/interrupción, pauseAudioInputRef 1011 prevention, pendingSwitchAgentIdRef, Faro self-escalation fix, deploy Cloud Run)
