@@ -90,18 +90,21 @@ export function getDiaryEntry(id) {
  * @param {string|Date} date - ISO date string or Date object
  * @returns {string} Formatted date string
  */
-export function formatDiaryDate(date) {
+export function formatDiaryDate(date, locale = 'es') {
   const d = new Date(date);
+  const loc = locale === 'en' ? 'en-US' : 'es-ES';
+  const time = d.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit' });
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
 
   if (d.toDateString() === today.toDateString()) {
-    return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    return `${locale === 'en' ? 'Today' : 'Hoy'}, ${time}`;
   }
   if (d.toDateString() === yesterday.toDateString()) {
-    return 'Ayer';
+    return `${locale === 'en' ? 'Yesterday' : 'Ayer'}, ${time}`;
   }
 
-  return d.toLocaleDateString('es-ES', { month: 'short', day: 'numeric' });
+  const dateStr = d.toLocaleDateString(loc, { month: 'short', day: 'numeric' });
+  return `${dateStr}, ${time}`;
 }

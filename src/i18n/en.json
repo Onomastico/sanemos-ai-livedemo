@@ -39,6 +39,8 @@
   "session.faroPrompt": "Faro will speak with you in a moment...",
   "session.startSpeaking": "Start speaking...",
   "session.crisisBanner": "CRISIS MODE ACTIVATED. If you are in immediate danger, please call 988 (US) or your local emergency services.",
+  "session.crisisBannerShort": "CRISIS MODE ACTIVATED",
+  "session.callNow": "Call",
   "session.faroEscalationContext": "The user has just been transferred because they expressed thoughts of self-harm. Introduce yourself as Faro, the crisis agent, and respond with immediate empathy in English. Let them know you are here to help.",
   "session.switchContext": "The user asked to switch to talk with you. Briefly introduce yourself as {{name}} and continue the conversation naturally in English.",
   "session.returnToSofia": "The user just finished a session with another agent and returned to reception. Ask how it went and if they need anything else.",
@@ -165,6 +167,10 @@
   "contexts.pablo.name": "Pablo",
   "contexts.pablo.summary": "Going through a separation",
   "contexts.pablo.detail": "Pablo, 35-year-old man. He is in the middle of a separation after 10 years of marriage. He is processing the loss of identity as a married person, negotiating shared custody of his two children, and struggling to imagine his future as a single person.",
+
+  "contexts.jorge.name": "Jorge Aedo",
+  "contexts.jorge.summary": "Lost his partner 2 weeks ago",
+  "contexts.jorge.detail": "Jorge Aedo, 28-year-old man. His partner passed away 2 weeks ago from a cerebral venous thrombosis followed by septic shock, all within the span of 10 days. He suffers from anxiety and now that his main source of support is gone, he is afraid of how to face it alone.",
 
   "contexts.custom.name": "No context",
   "contexts.custom.summary": "Start without a predefined profile",

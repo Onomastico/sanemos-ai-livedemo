@@ -48,6 +48,14 @@ export const USER_CONTEXTS = [
         emoji: '✨'
     },
     {
+        id: 'jorge',
+        name: 'Jorge Aedo',
+        summary: 'Perdió a su pareja hace 2 semanas',
+        detail: 'Jorge Aedo, hombre de 28 años. Su pareja falleció hace 2 semanas por una trombosis venosa cerebral y posterior shock séptico, todo ocurrió en el transcurso de 10 días. Sufre de ansiedad y ahora que no está su principal fuente de apoyo, tiene miedo de cómo enfrentarlo solo.',
+        country: 'Chile',
+        emoji: '💔'
+    },
+    {
         id: 'custom',
         name: 'Sin contexto',
         summary: 'Comenzar sin perfil predefinido',

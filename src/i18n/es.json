@@ -39,6 +39,8 @@
   "session.faroPrompt": "Faro va a hablar contigo en un momento...",
   "session.startSpeaking": "Comienza a hablar...",
   "session.crisisBanner": "MODO DE RIESGO VITAL ACTIVADO. Por favor, si estás en peligro inminente llama al *4141 en Chile o acude a urgencias.",
+  "session.crisisBannerShort": "MODO CRISIS ACTIVADO",
+  "session.callNow": "Llamar",
   "session.faroEscalationContext": "El usuario acaba de ser transferido porque expresó pensamientos de hacerse daño. Preséntate como Faro, el agente de crisis, y responde con empatía inmediata en español. Hazle saber que estás aquí para ayudarle.",
   "session.switchContext": "El usuario pidió cambiar a hablar contigo. Preséntate brevemente como {{name}} y continúa la conversación con naturalidad en español.",
   "session.returnToSofia": "El usuario acaba de terminar una sesión con otro agente y regresó a recepción. Pregúntale cómo le fue y si necesita algo más.",
@@ -165,6 +167,10 @@
   "contexts.pablo.name": "Pablo",
   "contexts.pablo.summary": "En proceso de separación",
   "contexts.pablo.detail": "Pablo, hombre de 35 años. Está en medio de una separación después de 10 años de matrimonio. Está procesando la pérdida de identidad como persona casada, negocia la custodia compartida de sus dos hijos, y lucha por imaginar su futuro como persona sola.",
+
+  "contexts.jorge.name": "Jorge Aedo",
+  "contexts.jorge.summary": "Perdió a su pareja hace 2 semanas",
+  "contexts.jorge.detail": "Jorge Aedo, hombre de 28 años. Su pareja falleció hace 2 semanas por una trombosis venosa cerebral y posterior shock séptico, todo ocurrió en el transcurso de 10 días. Sufre de ansiedad y ahora que no está su principal fuente de apoyo, tiene miedo de cómo enfrentarlo solo.",
 
   "contexts.custom.name": "Sin contexto",
   "contexts.custom.summary": "Comenzar sin perfil predefinido",

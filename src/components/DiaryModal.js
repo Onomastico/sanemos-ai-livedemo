@@ -49,7 +49,7 @@ export default function DiaryModal({ isOpen, onClose, locale }) {
                   >
                     <div className={styles.entryInfo}>
                       <h3>{entry.title}</h3>
-                      <span className={styles.date}>{formatDiaryDate(entry.date)}</span>
+                      <span className={styles.date}>{formatDiaryDate(entry.date, locale)}</span>
                       {entry.agentName && (
                         <span className={styles.agent}>Con {entry.agentName}</span>
                       )}

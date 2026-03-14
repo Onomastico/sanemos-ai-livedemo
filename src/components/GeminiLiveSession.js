@@ -23,6 +23,23 @@ const EMOTION_COLORS = {
     love: '#E91E8F', numbness: '#636E72'
 };
 
+const CRISIS_HOTLINES = {
+    US: { number: '988', tel: 'tel:988', label: '988 Suicide & Crisis Lifeline' },
+    CL: { number: '*4141', tel: 'tel:*4141', label: 'Línea de Crisis *4141' },
+    ES: { number: '024', tel: 'tel:024', label: 'Línea de Atención a la Conducta Suicida' },
+    MX: { number: '800 290 0024', tel: 'tel:8002900024', label: 'Línea de la Vida' },
+    AR: { number: '135', tel: 'tel:135', label: 'Centro de Asistencia al Suicida' },
+    CO: { number: '106', tel: 'tel:106', label: 'Línea 106' },
+    PE: { number: '113', tel: 'tel:113', label: 'Línea 113 Salud' },
+    DEFAULT_ES: { number: '*4141', tel: 'tel:*4141', label: 'Línea de Crisis' },
+    DEFAULT_EN: { number: '988', tel: 'tel:988', label: '988 Suicide & Crisis Lifeline' },
+};
+
+function getCrisisHotline(country, locale) {
+    if (country && CRISIS_HOTLINES[country]) return CRISIS_HOTLINES[country];
+    return locale === 'es' ? CRISIS_HOTLINES.DEFAULT_ES : CRISIS_HOTLINES.DEFAULT_EN;
+}
+
 export default function GeminiLiveSession({ agent: initialAgent, apiKey, userContext, userCountry, geminiSettings, onClose, isFirstVisit }) {
     const { t, locale } = useI18n();
     const [isFaroMode, setIsFaroMode] = useState(false);
@@ -224,23 +241,44 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                 />
             )}
 
-            {isFaroMode && (
-                <div className="absolute top-0 w-full bg-[#E85D75] text-fg py-2 px-4 shadow-lg text-center font-bold z-50 text-sm">
-                    {t('session.crisisBanner')}
-                </div>
-            )}
+            {isFaroMode && (() => {
+                const hotline = getCrisisHotline(userCountry, locale);
+                return (
+                    <div className="absolute top-0 w-full bg-[#E85D75] text-white py-2.5 px-4 shadow-lg z-50">
+                        <div className="flex items-center justify-center gap-3 flex-wrap">
+                            <span className="text-sm font-bold">{t('session.crisisBannerShort')}</span>
+                            <a
+                                href={hotline.tel}
+                                className="inline-flex items-center gap-1.5 bg-white text-[#E85D75] font-bold text-sm px-4 py-1.5 rounded-full shadow-md hover:bg-white/90 active:scale-95 transition-all"
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <span>📞</span>
+                                <span>{t('session.callNow')} {hotline.number}</span>
+                            </a>
+                        </div>
+                        <p className="text-white/80 text-[10px] text-center mt-1">{hotline.label}</p>
+                    </div>
+                );
+            })()}
 
-            {/* ===== SIDE PANEL ===== */}
+            {/* ===== SIDE PANEL (mobile: fullscreen overlay, desktop: fixed sidebar) ===== */}
+            {/* Mobile backdrop */}
+            {showSidePanel && (
+                <div
+                    className="md:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-30"
+                    onClick={() => setShowSidePanel(false)}
+                />
+            )}
             <div className={`
-                z-30 flex flex-col border-r border-fg/6 bg-bg/80 backdrop-blur-md shrink-0 transition-all duration-300
-                fixed md:relative inset-y-0 left-0
-                ${showSidePanel ? 'w-80 translate-x-0' : 'w-0 -translate-x-full md:w-80 md:translate-x-0'}
+                z-40 md:z-30 flex flex-col border-r border-fg/6 bg-bg/95 md:bg-bg/80 backdrop-blur-md shrink-0 transition-all duration-300
+                fixed md:relative inset-y-0 left-0 overflow-hidden
+                ${showSidePanel ? 'w-[85vw] max-w-sm translate-x-0' : 'w-0 -translate-x-full md:w-80 md:translate-x-0'}
             `}>
-                <div className="p-4 border-b border-fg/6 flex items-center justify-between shrink-0">
+                <div className="p-4 border-b border-fg/6 flex items-center justify-between shrink-0 min-w-70">
                     <h3 className="text-sm font-semibold text-fg-secondary">{t('session.history')}</h3>
                     <button
                         onClick={() => setShowSidePanel(false)}
-                        className="md:hidden text-fg-secondary hover:text-fg text-xs"
+                        className="md:hidden text-fg-secondary hover:text-fg text-sm px-2 py-1 rounded-lg bg-fg/5"
                     >
                         {t('session.close')}
                     </button>
