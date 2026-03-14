@@ -13,7 +13,7 @@ const DEFAULTS = {
     videoInterval: 2000,
     videoQuality: 0.4,
     emotionToolMode: 'unified',
-    piiScrubbing: true,
+    piiScrubbing: false,
 };
 
 const STORAGE_KEY = 'sanemos_settings';
