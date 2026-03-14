@@ -21,8 +21,18 @@ const lora = Lora({
 });
 
 export const metadata = {
-  title: "Sanemos AI Live",
-  description: "Emotional support agents powered by Gemini Multimodal Live API",
+  title: "Sanemos AI Live — Grief Support with Real-Time Voice AI",
+  description: "24/7 grief companion platform with 8 specialized AI agents. Real-time voice conversations powered by Google Gemini Multimodal Live API.",
+  icons: {
+    icon: "/sanemos_logo.png",
+    apple: "/sanemos_logo.png",
+  },
+  openGraph: {
+    title: "Sanemos AI Live",
+    description: "Real-time voice AI companions for grief support. 8 specialized agents, emotion detection, breathing exercises, and crisis support — always available.",
+    siteName: "Sanemos AI Live",
+    type: "website",
+  },
 };
 
 // Inline script to prevent FOUC — runs before React hydration
