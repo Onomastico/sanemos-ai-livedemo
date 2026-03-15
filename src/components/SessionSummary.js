@@ -6,7 +6,7 @@ import { useI18n } from '@/i18n/I18nContext';
 import { GoogleGenAI } from '@google/genai';
 import EmotionTimeline from './EmotionTimeline';
 
-export default function SessionSummary({ messages, agentName, agentColor, apiKey, emotionHistory, onClose, onSaveDiary, onSendToTherapist, locale }) {
+export default function SessionSummary({ messages, agentName, agentColor, apiKey, emotionHistory, agentTransitions, onClose, onSaveDiary, onSendToTherapist, locale }) {
     const { t } = useI18n();
     const [summary, setSummary] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -148,7 +148,7 @@ export default function SessionSummary({ messages, agentName, agentColor, apiKey
                 {/* Emotion Timeline */}
                 {emotionHistory && emotionHistory.length >= 2 && (
                     <div className="rounded-xl p-4 bg-fg/5 border border-fg/8 mt-3">
-                        <EmotionTimeline emotionHistory={emotionHistory} agentColor={agentColor} />
+                        <EmotionTimeline emotionHistory={emotionHistory} agentColor={agentColor} agentTransitions={agentTransitions} />
                     </div>
                 )}
 

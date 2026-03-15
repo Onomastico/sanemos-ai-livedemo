@@ -73,7 +73,8 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                 agentName: agent.name,
                 agentId: agent.id,
                 agentColor: agent.color,
-                emotionHistory: [...emotionHistory]
+                emotionHistory: [...emotionHistory],
+                agentTransitions: [...agentTransitions]
             };
             setShowSummary(true);
             switchAgent(newAgent, t('session.sofiaPostSessionContext', {
@@ -93,7 +94,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
         isSpeaking, isAiSpeaking, emotion, breathingExercise, setBreathingExercise,
         cameraEnabled, toggleCamera, videoStreamRef,
         socialPost, setSocialPost, visualContent, setVisualContent, uiToast, setUiToast,
-        latency, emotionHistory,
+        latency, emotionHistory, agentTransitions,
         diaryAction, setDiaryAction,
         therapistAction, setTherapistAction,
         showAppointment, setShowAppointment,
@@ -201,7 +202,8 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                 agentName: agent.name,
                 agentId: agent.id,
                 agentColor: agent.color,
-                emotionHistory: [...emotionHistory]
+                emotionHistory: [...emotionHistory],
+                agentTransitions: [...agentTransitions]
             };
             setShowSummary(true);
             const sofia = getAgent('sofia');
@@ -683,6 +685,7 @@ export default function GeminiLiveSession({ agent: initialAgent, apiKey, userCon
                     agentColor={lastSessionDataRef.current.agentColor}
                     apiKey={apiKey}
                     emotionHistory={lastSessionDataRef.current.emotionHistory}
+                    agentTransitions={lastSessionDataRef.current.agentTransitions}
                     locale={locale}
                     onClose={() => setShowSummary(false)}
                     onSaveDiary={(summary) => {

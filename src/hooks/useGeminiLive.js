@@ -121,6 +121,7 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
             {
                 name: "generate_social_post",
                 description: "Show a popup with a social media post you wrote for the user. Use for commemorative dates, memorials, birthdays, etc.",
+                behavior: "NON_BLOCKING",
                 parameters: {
                     type: "OBJECT",
                     properties: {
@@ -134,6 +135,7 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
             {
                 name: "copy_to_clipboard",
                 description: "Copy text to the user's clipboard. Use when they ask to copy something.",
+                behavior: "NON_BLOCKING",
                 parameters: {
                     type: "OBJECT",
                     properties: {
@@ -145,6 +147,7 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
             {
                 name: "open_url",
                 description: "Open a URL in a new browser tab. Use when the user asks to open a website.",
+                behavior: "NON_BLOCKING",
                 parameters: {
                     type: "OBJECT",
                     properties: {
@@ -155,15 +158,18 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
             },
             {
                 name: "dismiss_modal",
-                description: "Close any open popup/modal on screen. Use when the user says to close it or continue."
+                description: "Close any open popup/modal on screen. Use when the user says to close it or continue.",
+                behavior: "NON_BLOCKING"
             },
             {
                 name: "show_diary",
-                description: "Open the user's personal diary so they can view their saved entries. Call when the user asks to see their diary, journal, or past entries."
+                description: "Open the user's personal diary so they can view their saved entries. Call when the user asks to see their diary, journal, or past entries.",
+                behavior: "NON_BLOCKING"
             },
             {
                 name: "show_appointments",
-                description: "Open the user's appointments view so they can see their scheduled appointments. Call when the user asks to see their appointments, upcoming visits, or booked sessions."
+                description: "Open the user's appointments view so they can see their scheduled appointments. Call when the user asks to see their appointments, upcoming visits, or booked sessions.",
+                behavior: "NON_BLOCKING"
             }
         );
 
@@ -176,6 +182,7 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
                     description: agentId === 'sofia'
                         ? "Save the previous session to the user's diary. Call when the user wants to save their session or you suggest it."
                         : "Save a diary entry from this session. Call when the user wants to save their thoughts or when offering to save.",
+                    behavior: "NON_BLOCKING",
                     parameters: {
                         type: "OBJECT",
                         properties: {
@@ -188,6 +195,7 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
                     description: agentId === 'sofia'
                         ? "Send a summary of the previous session to a therapist. Prepare a brief, professional summary."
                         : "Send a summary of this session to a therapist. Prepare a brief, professional summary text.",
+                    behavior: "NON_BLOCKING",
                     parameters: {
                         type: "OBJECT",
                         properties: {
@@ -198,11 +206,13 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
                 },
                 {
                     name: "schedule_appointment",
-                    description: "Open the appointment booking interface so the user can pick a time visually."
+                    description: "Open the appointment booking interface so the user can pick a time visually.",
+                    behavior: "NON_BLOCKING"
                 },
                 {
                     name: "book_appointment",
                     description: "Directly book an appointment for a specific date and time. Use this when the user tells you their preferred day and time (e.g., 'Monday at 5pm'). Available slots are next 3 business days at 10:00, 15:00, 17:00.",
+                    behavior: "NON_BLOCKING",
                     parameters: {
                         type: "OBJECT",
                         properties: {
@@ -219,35 +229,20 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
         if (agentId === 'sofia') {
             declarations.push({
                 name: "mark_onboarding_done",
-                description: "Mark the onboarding as done. Call this IMMEDIATELY after the tour finishes OR when the user declines the tour."
+                description: "Mark the onboarding as done. Call this IMMEDIATELY after the tour finishes OR when the user declines the tour.",
+                behavior: "NON_BLOCKING"
             });
         }
     }
 
-    // Visual generation tool — only for Marco and Serena
-    if (agentId === 'marco' || agentId === 'serena') {
-        declarations.push({
-            name: "generate_visual",
-            description: agentId === 'marco'
-                ? "Generate an educational illustration or diagram about grief (e.g., stages of grief, dual-process model, waves of grief). Call when explaining a concept that benefits from a visual aid."
-                : "Generate a calming or mindfulness image (e.g., nature scene, mandala, guided imagery visual). Call when offering visual grounding or after a breathing exercise.",
-            parameters: {
-                type: "OBJECT",
-                properties: {
-                    visual_type: { type: "STRING", enum: ["diagram", "illustration", "calming_image"], description: "Type of visual to generate" },
-                    description: { type: "STRING", description: "Detailed description of what the image should show" },
-                    title: { type: "STRING", description: "Short title for the visual (e.g. 'Stages of Grief', 'Peaceful Lake')" }
-                },
-                required: ["visual_type", "description", "title"]
-            }
-        });
-    }
+
 
     if (agentId === 'serena') {
         declarations.push(
             {
                 name: "start_breathing_exercise",
                 description: "Start a synchronized breathing exercise visualization for the user. Call this when guiding a breathing exercise.",
+                behavior: "NON_BLOCKING",
                 parameters: {
                     type: "OBJECT",
                     properties: {
@@ -262,7 +257,8 @@ function buildFunctionDeclarations(agentId, emotionToolMode = 'unified') {
             },
             {
                 name: "stop_breathing_exercise",
-                description: "Stop the current breathing exercise visualization."
+                description: "Stop the current breathing exercise visualization.",
+                behavior: "NON_BLOCKING"
             }
         );
     }
@@ -288,6 +284,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
     const [uiToast, setUiToast] = useState(null);               // toast message string
     const [latency, setLatency] = useState(null);                // WebSocket latency in ms
     const [emotionHistory, setEmotionHistory] = useState([]);    // emotion timeline data
+    const [agentTransitions, setAgentTransitions] = useState([]); // [{ timestamp, agentId, agentName }]
     const [diaryAction, setDiaryAction] = useState(null);       // { type: 'save', title }
     const [therapistAction, setTherapistAction] = useState(null); // { type: 'send', summary_text }
     const [showAppointment, setShowAppointment] = useState(false); // show appointment booking modal
@@ -308,6 +305,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
     const activeSourcesRef = useRef([]);
     const speakingTimeoutRef = useRef(null);
     const bargeInFrameCountRef = useRef(0);
+    const bargeInGracePeriodRef = useRef(false); // disable barge-in briefly after connect to prevent echo false positives
     const pendingSwitchRef = useRef(false);
     const pendingSwitchContextRef = useRef(null);
     const pendingSwitchAgentIdRef = useRef(null);
@@ -339,6 +337,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
     const reconnectStabilityTimerRef = useRef(null);
     const sessionIdCounterRef = useRef(0);
     const activeSessionIdRef = useRef(0);
+    const lastResumeHandleRef = useRef(null); // session resumption token for seamless 1011 recovery
 
     // Finalize the current in-progress message → push to completed messages
     const finalizeCurrentMessage = () => {
@@ -392,11 +391,18 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
 
         setStatus('connecting');
         setError(null);
-        // On auto-reconnect (1008/1011), preserve transcript history
+        // On auto-reconnect (1008/1011), preserve transcript history and resume handle
         if (autoReconnectRef.current) {
             autoReconnectRef.current = false;
+        } else if (pendingSwitchRef.current) {
+            // Agent switch — preserve emotion history and transitions
+            pendingSwitchRef.current = false; // Clear here after using the flag
         } else {
+            // Truly fresh connection — clear everything
             setMessages([]);
+            setEmotionHistory([]);
+            setAgentTransitions([]);
+            lastResumeHandleRef.current = null;
         }
         setCurrentMessage(null);
         currentMsgRef.current = null;
@@ -431,6 +437,14 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                 config.inputAudioTranscription = {};
                 config.outputAudioTranscription = {};
             }
+            // Session resumption — pass stored handle on auto-reconnect for seamless 1011 recovery
+            if (autoReconnectRef.current && lastResumeHandleRef.current) {
+                config.sessionResumption = { handle: lastResumeHandleRef.current };
+                console.log('🔄 Using session resumption handle for reconnect');
+            } else {
+                // Request resumption tokens for future reconnects
+                config.sessionResumption = {};
+            }
 
             // Session ID for stale callback detection (replaces wsRef.current !== ws pattern)
             const mySessionId = ++sessionIdCounterRef.current;
@@ -457,8 +471,18 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                             if (sc?.turnComplete) msgKeys.push('turnComplete');
                             if (sc?.interrupted) msgKeys.push('interrupted');
                             if (msg.toolCall) msgKeys.push('toolCall:' + (msg.toolCall.functionCalls?.map(c => c.name).join(',') || '?'));
+                            if (msg.sessionResumptionUpdate) msgKeys.push('resumptionUpdate');
                             if (msgKeys.length) console.log(`📩 [${new Date().toLocaleTimeString()}] ${msgKeys.join(' | ')}`);
 
+                            // Store session resumption tokens for seamless 1011 recovery
+                            if (msg.sessionResumptionUpdate) {
+                                const update = msg.sessionResumptionUpdate;
+                                if (update.resumable && update.newHandle) {
+                                    lastResumeHandleRef.current = update.newHandle;
+                                }
+                            }
+
+                            // Track server generation state for audio gating
                             // Handle audio playback from model + latency measurement
                             if (sc?.modelTurn?.parts) {
                                 // Measure latency on first audio chunk of a response
@@ -490,15 +514,8 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                                 appendFragment(outputText, 'ai');
                             }
 
-                            // turnComplete signals end of AI turn — schedule finalize with delay
-                            // to let trailing transcription fragments arrive
-                            if (sc?.turnComplete && currentMsgRef.current?.sender === 'ai') {
-                                console.log(`✅ [${new Date().toLocaleTimeString()}] AI turnComplete — scheduling finalize`);
-                                scheduleFinalizeAiMessage();
-
-                            }
-
-                            // Handle server-side interruption (server VAD detected user barge-in)
+                            // Handle server-side interruption BEFORE turnComplete
+                            // (if both arrive in the same message, interrupted must nullify state first)
                             if (sc?.interrupted) {
                                 console.log(`🔇 [${new Date().toLocaleTimeString()}] Server interrupted — stopping playback`);
                                 stopAllPlayback();
@@ -510,6 +527,13 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                                     setCurrentMessage(null);
                                 }
                                 clearTimeout(turnCompleteTimerRef.current);
+                            }
+
+                            // turnComplete signals end of AI turn — schedule finalize with delay
+                            // to let trailing transcription fragments arrive
+                            if (sc?.turnComplete && currentMsgRef.current?.sender === 'ai') {
+                                console.log(`✅ [${new Date().toLocaleTimeString()}] AI turnComplete — scheduling finalize`);
+                                scheduleFinalizeAiMessage();
                             }
 
                             // Handle Tool Calls — dispatch each call and send toolResponse
@@ -575,21 +599,22 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                                     if (call.name === 'report_emotions') {
                                         const args = call.args || {};
                                         const now = Date.now();
+                                        const aid = agent.id;
                                         const newEmotion = {};
                                         if (args.text_emotion) {
                                             const e = { emotion: args.text_emotion, intensity: args.text_intensity || 3 };
                                             newEmotion.text = e;
-                                            setEmotionHistory(prev => [...prev, { timestamp: now, source: 'text', ...e }]);
+                                            setEmotionHistory(prev => [...prev, { timestamp: now, source: 'text', agentId: aid, ...e }]);
                                         }
                                         if (args.voice_emotion) {
                                             const e = { emotion: args.voice_emotion, intensity: args.voice_intensity || 3 };
                                             newEmotion.voice = e;
-                                            setEmotionHistory(prev => [...prev, { timestamp: now, source: 'voice', ...e }]);
+                                            setEmotionHistory(prev => [...prev, { timestamp: now, source: 'voice', agentId: aid, ...e }]);
                                         }
                                         if (args.facial_emotion) {
                                             const e = { emotion: args.facial_emotion, intensity: args.facial_intensity || 3 };
                                             newEmotion.facial = e;
-                                            setEmotionHistory(prev => [...prev, { timestamp: now, source: 'facial', ...e }]);
+                                            setEmotionHistory(prev => [...prev, { timestamp: now, source: 'facial', agentId: aid, ...e }]);
                                         }
                                         setEmotion(prev => ({ ...prev, ...newEmotion }));
                                     }
@@ -598,19 +623,19 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                                         const args = call.args || {};
                                         const entry = { emotion: args.emotion, intensity: args.intensity || 3 };
                                         setEmotion(prev => ({ ...prev, text: entry }));
-                                        setEmotionHistory(prev => [...prev, { timestamp: Date.now(), source: 'text', ...entry }]);
+                                        setEmotionHistory(prev => [...prev, { timestamp: Date.now(), source: 'text', agentId: agent.id, ...entry }]);
                                     }
                                     if (call.name === 'report_voice_emotion') {
                                         const args = call.args || {};
                                         const entry = { emotion: args.emotion, intensity: args.intensity || 3 };
                                         setEmotion(prev => ({ ...prev, voice: entry }));
-                                        setEmotionHistory(prev => [...prev, { timestamp: Date.now(), source: 'voice', ...entry }]);
+                                        setEmotionHistory(prev => [...prev, { timestamp: Date.now(), source: 'voice', agentId: agent.id, ...entry }]);
                                     }
                                     if (call.name === 'report_facial_emotion') {
                                         const args = call.args || {};
                                         const entry = { emotion: args.emotion, intensity: args.intensity || 3 };
                                         setEmotion(prev => ({ ...prev, facial: entry }));
-                                        setEmotionHistory(prev => [...prev, { timestamp: Date.now(), source: 'facial', ...entry }]);
+                                        setEmotionHistory(prev => [...prev, { timestamp: Date.now(), source: 'facial', agentId: agent.id, ...entry }]);
                                     }
                                     if (call.name === 'start_breathing_exercise') {
                                         const args = call.args || {};
@@ -628,10 +653,6 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                                     if (call.name === 'generate_social_post') {
                                         const args = call.args || {};
                                         setSocialPost({ platform: args.platform || 'general', post_text: args.post_text || '', occasion: args.occasion || '' });
-                                    }
-                                    if (call.name === 'generate_visual') {
-                                        const args = call.args || {};
-                                        setVisualContent({ visual_type: args.visual_type || 'illustration', description: args.description || '', title: args.title || '' });
                                     }
                                     if (call.name === 'copy_to_clipboard') {
                                         const text = call.args?.text || '';
@@ -736,7 +757,6 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                                         'report_voice_emotion',
                                         'report_facial_emotion',
                                         'generate_social_post',
-                                        'generate_visual',
                                         'save_diary_entry',
                                         'send_to_therapist',
                                         'schedule_appointment',
@@ -866,6 +886,17 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
             }
             setStatus('connected');
 
+            // Grace period: disable client-side barge-in for 3s after connect
+            // to prevent speaker echo from cutting off the agent's greeting
+            bargeInGracePeriodRef.current = true;
+            setTimeout(() => { bargeInGracePeriodRef.current = false; }, 3000);
+
+            // Track agent transition (skip on auto-reconnect to same agent)
+            const isReconnectingSameAgent = autoReconnectJustHappenedRef.current;
+            if (!isReconnectingSameAgent) {
+                setAgentTransitions(prev => [...prev, { timestamp: Date.now(), agentId: agent.id, agentName: agent.name }]);
+            }
+
             // Start audio capture
             startAudioCapture();
 
@@ -876,10 +907,14 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
             // On auto-reconnect, don't re-greet — just resume
             const isReconnect = autoReconnectJustHappenedRef.current;
             autoReconnectJustHappenedRef.current = false;
+            const hasResumeHandle = isReconnect && lastResumeHandleRef.current;
             let primeMsg = contextMsg || null;
             if (!primeMsg) {
-                if (isReconnect) {
-                    // On auto-reconnect, send a resume prime so the agent re-engages
+                if (isReconnect && hasResumeHandle) {
+                    // Session resumption preserves server state — just nudge the agent to continue
+                    primeMsg = 'Continue the conversation naturally from where we left off.';
+                } else if (isReconnect) {
+                    // No resumption handle — server lost context, re-prime fully
                     primeMsg = 'The session was briefly interrupted by a network issue. Continue the conversation naturally — greet the user again briefly and ask how you can help.';
                 } else if (agent.isReceptionist) {
                     primeMsg = 'The user just arrived. Greet them warmly and start the conversation.';
@@ -939,7 +974,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
     // Reconnect after agent switch
     useEffect(() => {
         if (pendingSwitchRef.current) {
-            pendingSwitchRef.current = false;
+            // Note: don't clear pendingSwitchRef here — connect() needs it to preserve emotionHistory/agentTransitions
             connect();
         }
     }, [agent, connect]);
@@ -1036,8 +1071,10 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                     speakingTimeoutRef.current = setTimeout(() => setIsSpeaking(false), 400);
                 }
 
-                // Barge-in detection: if user speaks loud enough while AI is playing, stop AI playback
-                if (rms > 0.015 && activeSourcesRef.current.length > 0) {
+                // Barge-in detection: if user speaks loud enough while AI is playing, stop local playback
+                // Server handles its own VAD natively — we just stop local audio to reduce echo
+                // Grace period after connect prevents echo false positives during agent greeting
+                if (rms > 0.015 && activeSourcesRef.current.length > 0 && !bargeInGracePeriodRef.current) {
                     bargeInFrameCountRef.current++;
                     if (bargeInFrameCountRef.current >= 3) { // ~150ms of consecutive voice
                         console.log('🔇 Barge-in detected — stopping AI playback');
@@ -1075,7 +1112,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                 }
 
                 lastAudioSentRef.current = now;
-                // Pause audio input during destructive tool calls to prevent VAD barge-in canceling the tool call (causes 1011)
+                // Only pause during destructive tool calls (switch_agent, end_session, escalate)
                 if (pauseAudioInputRef.current) return;
                 try {
                     wsRef.current.sendRealtimeInput({ audio: { mimeType: "audio/pcm;rate=16000", data: base64Audio } });
@@ -1220,7 +1257,9 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
             const vidQuality = settingsRef.current?.videoQuality || 0.4;
             frameIntervalRef.current = setInterval(() => {
                 try {
-                    if (wsRef.current && video.readyState >= 2) {
+                    // Skip during destructive tool calls or if WS is closed
+                    if (!wsRef.current || pauseAudioInputRef.current) return;
+                    if (video.readyState >= 2) {
                         ctx.drawImage(video, 0, 0, 320, 240);
                         const dataUrl = canvas.toDataURL('image/jpeg', vidQuality);
                         const base64Data = dataUrl.split(',')[1];
@@ -1229,7 +1268,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
                         }
                     }
                 } catch (e) {
-                    console.warn("Frame capture error:", e);
+                    // Silently handle — WS may have closed between check and send
                 }
             }, vidInterval);
         } catch (err) {
@@ -1283,6 +1322,7 @@ export function useGeminiLive(apiKey, initialAgent, onEscalateToFaro, onEndSessi
         setUiToast,
         latency,
         emotionHistory,
+        agentTransitions,
         diaryAction,
         setDiaryAction,
         therapistAction,

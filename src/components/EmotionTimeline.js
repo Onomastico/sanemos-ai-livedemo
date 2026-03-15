@@ -11,27 +11,33 @@ const EMOTION_COLORS = {
   confusion: '#BDC3C7', gratitude: '#27AE60',
 };
 
+const AGENT_COLORS = {
+  luna: '#7C3AED', marco: '#B45309', serena: '#0D9488',
+  alma: '#DB2777', nora: '#059669', iris: '#6D28D9',
+  sofia: '#2563EB', faro: '#DC2626',
+};
+
 const SOURCE_ICONS = { text: '\uD83D\uDCAC', voice: '\uD83C\uDF99\uFE0F', facial: '\uD83D\uDC41\uFE0F' };
 
-const PAD = { top: 20, right: 20, bottom: 50, left: 35 };
+const PAD = { top: 32, right: 20, bottom: 50, left: 35 };
 const W = 600;
-const H = 200;
+const H = 220;
 const PLOT_W = W - PAD.left - PAD.right;
 const PLOT_H = H - PAD.top - PAD.bottom;
 
-export default function EmotionTimeline({ emotionHistory = [], agentColor = '#888' }) {
+export default function EmotionTimeline({ emotionHistory = [], agentColor = '#888', agentTransitions = [] }) {
   const { t } = useI18n();
 
-  const { points, lines, emotions, tMin, tMax } = useMemo(() => {
+  const { points, lines, emotions, tMin, tMax, agentBands } = useMemo(() => {
     if (!emotionHistory || emotionHistory.length < 2)
-      return { points: [], lines: [], emotions: [], tMin: 0, tMax: 1 };
+      return { points: [], lines: [], emotions: [], tMin: 0, tMax: 1, agentBands: [] };
 
     const sorted = [...emotionHistory].sort((a, b) => a.timestamp - b.timestamp);
     const tMin = sorted[0].timestamp;
     const tMax = sorted[sorted.length - 1].timestamp;
     const tRange = tMax - tMin || 1;
 
-    const toX = (ts) => PAD.left + ((ts - tMin) / tRange) * PLOT_W;
+    const toX = (ts) => PAD.left + ((Math.max(ts, tMin) - tMin) / tRange) * PLOT_W;
     const toY = (intensity) => PAD.top + PLOT_H - ((Math.min(Math.max(intensity, 1), 5) - 1) / 4) * PLOT_H;
 
     const pts = sorted.map((d) => ({
@@ -55,8 +61,26 @@ export default function EmotionTimeline({ emotionHistory = [], agentColor = '#88
     });
 
     const uniqueEmotions = [...new Set(sorted.map((d) => d.emotion))];
-    return { points: pts, lines: lns, emotions: uniqueEmotions, tMin, tMax };
-  }, [emotionHistory, agentColor]);
+
+    // Build agent bands from transitions
+    const bands = [];
+    if (agentTransitions && agentTransitions.length > 0) {
+      const sortedT = [...agentTransitions].sort((a, b) => a.timestamp - b.timestamp);
+      for (let i = 0; i < sortedT.length; i++) {
+        const start = sortedT[i].timestamp;
+        const end = i + 1 < sortedT.length ? sortedT[i + 1].timestamp : tMax;
+        bands.push({
+          x: toX(start),
+          width: Math.max(toX(end) - toX(start), 2),
+          agentId: sortedT[i].agentId,
+          agentName: sortedT[i].agentName,
+          color: AGENT_COLORS[sortedT[i].agentId] || agentColor,
+        });
+      }
+    }
+
+    return { points: pts, lines: lns, emotions: uniqueEmotions, tMin, tMax, agentBands: bands };
+  }, [emotionHistory, agentColor, agentTransitions]);
 
   if (!emotionHistory || emotionHistory.length < 2) {
     return (
@@ -75,6 +99,29 @@ export default function EmotionTimeline({ emotionHistory = [], agentColor = '#88
     <div>
       <h4 style={{ color: 'var(--fg)', marginBottom: 8, fontSize: '0.85rem' }}>{t('summary.emotionTimeline')}</h4>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ background: 'transparent' }}>
+        {/* Agent color bands */}
+        {agentBands.map((band, i) => (
+          <g key={`band-${i}`}>
+            <rect
+              x={band.x} y={PAD.top}
+              width={band.width} height={PLOT_H}
+              fill={band.color} opacity={0.08}
+            />
+            {i > 0 && (
+              <line
+                x1={band.x} y1={PAD.top} x2={band.x} y2={PAD.top + PLOT_H}
+                stroke={band.color} strokeWidth={1} strokeDasharray="4 3" opacity={0.4}
+              />
+            )}
+            <text
+              x={band.x + band.width / 2} y={PAD.top - 6}
+              fill={band.color} fontSize={8} textAnchor="middle" fontWeight="600" opacity={0.7}
+            >
+              {band.agentName}
+            </text>
+          </g>
+        ))}
+
         {/* Grid lines */}
         {[1, 2, 3, 4, 5].map((v) => {
           const y = PAD.top + PLOT_H - ((v - 1) / 4) * PLOT_H;
